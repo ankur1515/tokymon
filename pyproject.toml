@@ -1,0 +1,21 @@
+[project]
+name = "tokymon"
+version = "0.1.0"
+description = "Tokymon Raspberry Pi 5 robot scaffold"
+authors = [{ name = "Tokymon" }]
+requires-python = ">=3.10"
+dependencies = [
+  "pyyaml>=6.0",
+  "python-dotenv>=1.0",
+  "paho-mqtt>=1.6",
+  "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

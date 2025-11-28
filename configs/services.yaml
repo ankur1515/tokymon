@@ -1,0 +1,18 @@
+llm:
+  provider: "openai"
+  model: "gpt-4o-mini"
+  timeout_s: 6
+stt:
+  provider: "whisper"
+  device: "usb_mic"
+tts:
+  provider: "elevenlabs"
+  voice: "alloy"
+runtime:
+  use_simulator: false
+  heartbeat_interval_s: 1.0
+  safe_stop_timeout_s: 2.0
+mqtt:
+  broker: "localhost"
+  port: 1883
+  topic_prefix: "tokymon"

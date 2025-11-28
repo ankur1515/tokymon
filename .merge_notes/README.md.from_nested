@@ -1,0 +1,71 @@
+# Tokymon POC
+
+Tokymon is a Raspberry Pi 5 robot scaffold with configurable sensors, safety-first control, and simulator support for development in Cursor or on a laptop.
+
+## Quick Start
+
+1. **Create a virtual environment**
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt  # or `pip install -e .` if using pyproject
+   ```
+
+2. **Copy the example `.env`**
+   ```bash
+   cp .env .env.local
+   # edit .env.local to add API keys (never commit!)
+   ```
+
+3. **Run in simulator mode**
+   ```bash
+   export TOKY_ENV=dev  # loads configs/env.dev.yaml
+   python3 main.py
+   ```
+
+4. **Run tests**
+   ```bash
+   pytest
+   ```
+
+## Deploy to Raspberry Pi
+
+1. Copy the repo to `/home/pi/tokymon`.
+2. Run the commands listed at the end of this README (and in Cursor output) to set up the service.
+3. Update `.env` with production secrets and set `TOKY_ENV=prod` (or unset to use defaults).
+
+## Systemd Autostart
+
+To install the service:
+
+```bash
+sudo cp scripts/tokymon.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable tokymon --now
+```
+
+## Repository Structure
+
+- `configs/` – pin maps, runtime toggles, environment overrides (YAML)
+- `system/config.py` – loads YAML + `.env` and exposes the global `CONFIG`
+- `drivers/` and `sensors/` – hardware drivers with simulator-friendly fallbacks
+- `control/` – motor control, safety manager, movement primitives
+- `display/`, `voice/`, `vision/` – stubs for other peripherals
+- `brain/` – LLM gateway, intent parsing, policy enforcement
+- `scripts/` – deployment helpers and systemd unit
+
+## Safety Notes
+
+- The policy engine whitelists allowed actions and clamps parameters.
+- The supervisor and watchdog ensure motors stop if heartbeats fail.
+- Simulator mode routes all GPIO/SPI calls through safe no-op drivers.
+
+## TODOs
+
+- Implement real LLM/STT/TTS provider calls using secrets from `.env`.
+- Flesh out MQTT topics and subscribe handlers.
+- Port drivers to run on actual Raspberry Pi hardware.
+
+## Never Commit Secrets
+
+Keep `.env` and `.env.local` in your `.gitignore`. Use environment variables for API keys.

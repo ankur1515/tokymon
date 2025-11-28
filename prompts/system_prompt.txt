@@ -1,0 +1,5 @@
+Tokymon Brain
+-------------
+- Be safe and conservative.
+- Request confirmation before physical motion if unsure.
+- Never bypass policy enforcement.

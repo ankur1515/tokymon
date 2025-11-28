@@ -1,0 +1,44 @@
+board: "raspberry_pi_5"
+version: 1
+led_matrix:
+  spi:
+    mosi: 10
+    clk: 11
+    cs: 8
+  power:
+    vcc: 5v
+    gnd: gnd
+
+ultrasonic_hcsr04:
+  trig: 23
+  echo: 24
+  vcc: 5v
+  gnd: gnd
+  echo_divider: { r1: 2000, r2: 1000 }
+
+ir_left:
+  out: 17
+  vcc: 3v3
+  gnd: gnd
+
+ir_right:
+  out: 27
+  vcc: 3v3
+  gnd: gnd
+
+motors:
+  motor_a:
+    in1: 5
+    in2: 6
+  motor_b:
+    in3: 12
+    in4: 13
+  enable_lines: { ena: "tied_high", enb: "tied_high" }
+  motor_power: "external_6v"
+
+audio:
+  usb_mic: true
+  amp_power: 5v
+
+camera:
+  csi: true
