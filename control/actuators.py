@@ -23,5 +23,19 @@ def move(direction: Direction, duration: float) -> None:
     motors.stop()
 
 
+def turn_left(duration: float) -> None:
+    LOGGER.info("Actuator turn left for %.2fs", duration)
+    motors.turn_left()
+    time.sleep(max(duration, 0))
+    motors.stop()
+
+
+def turn_right(duration: float) -> None:
+    LOGGER.info("Actuator turn right for %.2fs", duration)
+    motors.turn_right()
+    time.sleep(max(duration, 0))
+    motors.stop()
+
+
 def stop() -> None:
     motors.stop()

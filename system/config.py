@@ -59,6 +59,12 @@ def _build_config() -> Dict[str, Any]:
         "services": _load_yaml(CONFIGS_DIR / "services.yaml"),
         "env": {},
     }
+    tests_block = {}
+    if "tests" in config["services"]:
+        tests_block = dict(config["services"].pop("tests") or {})
+        config["tests"] = tests_block
+    else:
+        config["tests"] = {}
 
     env_name = os.getenv("TOKY_ENV")
     if env_name:

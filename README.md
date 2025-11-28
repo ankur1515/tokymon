@@ -45,6 +45,16 @@ Always run pytest with the simulator environment and project root on `PYTHONPATH
 TOKY_ENV=dev PYTHONPATH=. pytest -q
 ```
 
+### Hardware Test Flow (Pi)
+
+```bash
+ssh pi@raspberrypi.local
+cd /home/ankursharma/Projects/tokymon
+./scripts/hw_test_run.sh --auto-confirm   # requires venv + systemd deps
+```
+
+This runs `examples/hw_test.py`, which performs the full motor/sensor/audio/vision validation with SafetyManager supervision. In non-prod environments, pass `--run-hw` to execute the simulator-only flow.
+
 ## Deploy on Raspberry Pi
 
 1. Sync the repo to `/home/ankursharma/Projects/tokymon` (see `scripts/deploy_to_pi.sh`).

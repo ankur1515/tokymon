@@ -34,6 +34,16 @@ def backward() -> None:
     _set_motor(False, False)
 
 
+def turn_left() -> None:
+    LOGGER.info("Motors turn left")
+    _set_motor(False, True)
+
+
+def turn_right() -> None:
+    LOGGER.info("Motors turn right")
+    _set_motor(True, False)
+
+
 def stop() -> None:
     LOGGER.info("Motors stop")
     rpi_gpio.write(A_IN1, False)

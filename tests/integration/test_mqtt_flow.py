@@ -27,7 +27,7 @@ class DummyClient:
 
 def test_publish_and_handler(monkeypatch):
     dummy = DummyClient()
-    monkeypatch.setattr(mqtt_bus.mqtt, "Client", lambda: dummy)
+    monkeypatch.setattr(mqtt_bus, "_build_client", lambda: dummy)
     bus = mqtt_bus.MqttBus()
     bus.start()
     seen = {}

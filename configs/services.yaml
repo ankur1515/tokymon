@@ -16,3 +16,10 @@ mqtt:
   broker: "localhost"
   port: 1883
   topic_prefix: "tokymon"
+tests:
+  movement_durations:
+    forward: 1.0
+    backward: 1.0
+    turn: 0.6
+  ultrasonic_min_safe_cm: 15
+  stt_timeout_s: 4
