@@ -2,62 +2,49 @@
 from __future__ import annotations
 
 try:
-    from typing import Protocol
-except ImportError:  # pragma: no cover - py<3.8 fallback
-    Protocol = object  # type: ignore
+    from .safe_gpio import SafeGPIO
+except ImportError:
+    from .safe_gpio import setup as safe_setup, write as safe_write, read as safe_read, cleanup as safe_cleanup
 
-from system.config import CONFIG
-from system.logger import get_logger
+    class SafeGPIO:
+        def setup(self, pin, mode):
+            safe_setup(pin, mode)
 
-LOGGER = get_logger("gpio")
+        def write(self, pin, val):
+            safe_write(pin, val)
 
+        def read(self, pin):
+            return safe_read(pin)
 
-class _GpioBackend(Protocol):
-    def setup(self, pin: int, mode: str) -> None: ...
-    def write(self, pin: int, value: bool) -> None: ...
-    def read(self, pin: int) -> bool: ...
-    def cleanup(self) -> None: ...
+        def cleanup(self):
+            safe_cleanup()
 
+try:
+    import RPi.GPIO as _gpio
 
-if CONFIG["services"]["runtime"]["use_simulator"]:
-    from drivers import safe_gpio as backend
-else:  # pragma: no cover - requires real hardware
-    try:
-        from drivers import sysfs_gpio as backend
-        LOGGER.info("Using sysfs GPIO backend")
-    except Exception:  # pragma: no cover - fallback
-        try:
-            import RPi.GPIO as GPIO
+    class RpiBackend:
+        def __init__(self):
+            _gpio.setmode(_gpio.BCM)
 
-            class _RPiBackend:
-                def __init__(self) -> None:
-                    GPIO.setmode(GPIO.BCM)
+        def setup(self, pin, mode):
+            _gpio.setup(pin, _gpio.OUT if mode == "out" else _gpio.IN)
 
-                def setup(self, pin: int, mode: str) -> None:
-                    gpio_mode = GPIO.OUT if mode == "out" else GPIO.IN
-                    GPIO.setup(pin, gpio_mode)
+        def write(self, pin, val):
+            _gpio.output(pin, _gpio.HIGH if val else _gpio.LOW)
 
-                def write(self, pin: int, value: bool) -> None:
-                    GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
+        def read(self, pin):
+            return _gpio.input(pin)
 
-                def read(self, pin: int) -> bool:
-                    return bool(GPIO.input(pin))
+        def cleanup(self):
+            _gpio.cleanup()
 
-                def cleanup(self) -> None:
-                    GPIO.cleanup()
+    BACKEND = RpiBackend()
 
-            backend = _RPiBackend()
-            LOGGER.info("Using RPi.GPIO backend")
-        except ImportError:
-            from drivers import safe_gpio as backend  # type: ignore
-            LOGGER.warning("Hardware GPIO unavailable, falling back to safe GPIO")
-
-
-BACKEND: _GpioBackend = backend
+except Exception:
+    BACKEND = SafeGPIO()
 
 
 def setup(pin: int, mode: str) -> None:
-    LOGGER.debug("setup pin %s mode %s", pin, mode)
     BACKEND.setup(pin, mode)
 
 
