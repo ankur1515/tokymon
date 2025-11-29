@@ -1,7 +1,7 @@
 """Sensor factory that switches between real and simulated drivers."""
 from __future__ import annotations
 
-from sensors.drivers import hcsr04, ir_left, ir_right
+from sensors.drivers import hcsr04, ir_sensor
 from sensors import simulator
 from system.config import CONFIG
 
@@ -17,10 +17,10 @@ def get_ultrasonic_reader():
 def get_ir_left_reader():
     if USE_SIM:
         return lambda: simulator.read_ir("left")
-    return ir_left.read_state
+    return ir_sensor.read_left
 
 
 def get_ir_right_reader():
     if USE_SIM:
         return lambda: simulator.read_ir("right")
-    return ir_right.read_state
+    return ir_sensor.read_right

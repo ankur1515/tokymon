@@ -23,30 +23,34 @@ if CONFIG["services"]["runtime"]["use_simulator"]:
     from drivers import safe_gpio as backend
 else:  # pragma: no cover - requires real hardware
     try:
-        import RPi.GPIO as GPIO
-    except ImportError:  # pragma: no cover - tests/dev fallback
-        from drivers import safe_gpio as backend  # type: ignore
-        LOGGER.warning("RPi.GPIO unavailable, falling back to safe GPIO")
-    else:
+        from drivers import sysfs_gpio as backend
+        LOGGER.info("Using sysfs GPIO backend")
+    except Exception:  # pragma: no cover - fallback
+        try:
+            import RPi.GPIO as GPIO
 
-        class _RealBackend:
-            def __init__(self) -> None:
-                GPIO.setmode(GPIO.BCM)
+            class _RPiBackend:
+                def __init__(self) -> None:
+                    GPIO.setmode(GPIO.BCM)
 
-            def setup(self, pin: int, mode: str) -> None:
-                gpio_mode = GPIO.OUT if mode == "out" else GPIO.IN
-                GPIO.setup(pin, gpio_mode)
+                def setup(self, pin: int, mode: str) -> None:
+                    gpio_mode = GPIO.OUT if mode == "out" else GPIO.IN
+                    GPIO.setup(pin, gpio_mode)
 
-            def write(self, pin: int, value: bool) -> None:
-                GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
+                def write(self, pin: int, value: bool) -> None:
+                    GPIO.output(pin, GPIO.HIGH if value else GPIO.LOW)
 
-            def read(self, pin: int) -> bool:
-                return bool(GPIO.input(pin))
+                def read(self, pin: int) -> bool:
+                    return bool(GPIO.input(pin))
 
-            def cleanup(self) -> None:
-                GPIO.cleanup()
+                def cleanup(self) -> None:
+                    GPIO.cleanup()
 
-        backend = _RealBackend()
+            backend = _RPiBackend()
+            LOGGER.info("Using RPi.GPIO backend")
+        except ImportError:
+            from drivers import safe_gpio as backend  # type: ignore
+            LOGGER.warning("Hardware GPIO unavailable, falling back to safe GPIO")
 
 
 BACKEND: _GpioBackend = backend
