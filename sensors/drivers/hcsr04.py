@@ -1,68 +1,107 @@
+from __future__ import annotations
+
 import time
 
-from system.config import CONFIG
-from system.logger import get_logger
 from drivers import rpi_gpio
+
+from system.config import CONFIG
+
+from system.logger import get_logger
+
+
 
 LOGGER = get_logger("hcsr04")
 
-# Pin mapping: BCM → Global offset 559 (from raw_scripts/ultrasonic_test.py)
-TRIG_BCM = 23
-ECHO_BCM = 24
 
-TRIG = TRIG_BCM + 559  # 582
-ECHO = ECHO_BCM + 559  # 583
 
-# Initialize pins
+# Correct Pi5 global GPIO numbers (sysfs)
+
+TRIG = CONFIG["pinmap"]["ultrasonic_hcsr04"]["trig"]   # BCM → will map to global (582)
+
+ECHO = CONFIG["pinmap"]["ultrasonic_hcsr04"]["echo"]   # BCM → will map to global (583)
+
+
+
+# Setup GPIO
+
 rpi_gpio.setup(TRIG, "out")
-rpi_gpio.setup(ECHO, "in")
-LOGGER.info(f"HC-SR04 driver loaded: TRIG={TRIG}, ECHO={ECHO}")
 
-# Constants from raw_scripts/ultrasonic_test.py
-TIMEOUT = 0.02  # seconds
-POLL_SLEEP = 0.0001
+rpi_gpio.setup(ECHO, "in")
+
 
 
 def read_distance_cm() -> float:
-    """
-    Returns distance in cm using HC-SR04.
-    Logic copied from raw_scripts/ultrasonic_test.py get_distance().
-    Returns -1 on timeout or invalid reading.
-    """
-    # Ensure trig low
-    rpi_gpio.write(TRIG, 0)
-    time.sleep(0.05)
 
-    # Pulse: HIGH for 10µs
+    """
+
+    HC-SR04 measurement identical to working ultrasonic_test.py.
+
+    Blocking, simple, reliable.
+
+    Returns distance in cm or -1 on timeout.
+
+    """
+
+
+
+    # Ensure trigger low
+
+    rpi_gpio.write(TRIG, 0)
+
+    time.sleep(0.0002)
+
+
+
+    # 10 microsecond pulse
+
     rpi_gpio.write(TRIG, 1)
+
     time.sleep(0.00001)
+
     rpi_gpio.write(TRIG, 0)
 
-    # Wait for echo HIGH (start)
-    start_deadline = time.time() + TIMEOUT
-    while time.time() < start_deadline:
-        if rpi_gpio.read(ECHO):
-            pulse_start = time.time()
-            break
-        time.sleep(POLL_SLEEP)
-    else:
-        LOGGER.warning("Ultrasonic timeout: no echo start")
-        return -1
 
-    # Wait for echo LOW (end)
-    end_deadline = time.time() + TIMEOUT
-    while time.time() < end_deadline:
-        if not rpi_gpio.read(ECHO):
-            pulse_end = time.time()
-            break
-        time.sleep(POLL_SLEEP)
-    else:
-        LOGGER.warning("Ultrasonic timeout: no echo end")
-        return -1
+
+    # Wait for echo to go HIGH
+
+    start_time = time.time()
+
+    timeout = start_time + 0.03
+
+    while rpi_gpio.read(ECHO) == 0:
+
+        if time.time() > timeout:
+
+            LOGGER.warning("Ultrasonic timeout: no echo start")
+
+            return -1
+
+    pulse_start = time.time()
+
+
+
+    # Wait for echo to go LOW
+
+    timeout = pulse_start + 0.03
+
+    while rpi_gpio.read(ECHO) == 1:
+
+        if time.time() > timeout:
+
+            LOGGER.warning("Ultrasonic timeout: no echo end")
+
+            return -1
+
+    pulse_end = time.time()
+
+
+
+    # Duration → distance
 
     duration = pulse_end - pulse_start
-    dist = duration * 17150
-    if dist < 2 or dist > 400:
-        LOGGER.warning("Distance out of range: %.2f cm", dist)
-        return -1
-    return round(dist, 2)
+
+    distance = duration * 17150    # cm
+
+
+
+    return round(distance, 2)

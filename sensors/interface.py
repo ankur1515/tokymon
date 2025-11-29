@@ -5,13 +5,20 @@ from sensors.drivers import hcsr04, ir_sensor
 from sensors import simulator
 from system.config import CONFIG
 
+from sensors.drivers.hcsr04 import read_distance_cm
+
 USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 
 
+def get_distance_cm():
+    return read_distance_cm()
+
+
 def get_ultrasonic_reader():
+    """Backward compatibility wrapper."""
     if USE_SIM:
         return simulator.read_distance_cm
-    return hcsr04.read_distance_cm
+    return read_distance_cm
 
 
 def get_ir_left_reader():
