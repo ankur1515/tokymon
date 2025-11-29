@@ -1,22 +1,15 @@
 """
-drivers.rpi_gpio — clean & stable GPIO shim
+Unified GPIO backend for Raspberry Pi.
 
-Provides module-level functions:
-    setup(pin, mode)
-    write(pin, val)
-    read(pin)
-    cleanup()
-
-Uses real RPi.GPIO on the Pi.
-Falls back to SafeGPIO in dev/simulator mode.
+Priority:
+1. RPi.GPIO
+2. fallback to safe_gpio (simulator)
 """
 
-from .safe_gpio import SafeGPIO
+from system.logger import get_logger
+LOGGER = get_logger("rpi_gpio")
 
-
-# ---------------------------------------------------------
-# Select backend: RPi.GPIO → fallback to SafeGPIO
-# ---------------------------------------------------------
+# Try to import real RPi.GPIO
 try:
     import RPi.GPIO as _gpio
 
@@ -27,36 +20,43 @@ try:
         def setup(self, pin, mode):
             _gpio.setup(pin, _gpio.OUT if mode == "out" else _gpio.IN)
 
-        def write(self, pin, val):
-            _gpio.output(pin, _gpio.HIGH if val else _gpio.LOW)
+        def write(self, pin, value):
+            _gpio.output(pin, _gpio.HIGH if value else _gpio.LOW)
 
         def read(self, pin):
             return _gpio.input(pin)
 
         def cleanup(self):
-            try:
-                _gpio.cleanup()
-            except Exception:
-                pass
+            _gpio.cleanup()
 
     BACKEND = RpiBackend()
+    LOGGER.info("Using RPi.GPIO backend")
 
-except Exception:
-    # Dev/simulator environment
-    BACKEND = SafeGPIO()
+except Exception as e:
+    LOGGER.warning("RPi.GPIO unavailable → using SafeGPIO fallback (%s)", e)
+
+    # Import module functions directly
+    from . import safe_gpio
+
+    class SafeWrapper:
+        def setup(self, pin, mode):
+            safe_gpio.setup(pin, mode)
+
+        def write(self, pin, value):
+            safe_gpio.write(pin, value)
+
+        def read(self, pin):
+            return safe_gpio.read(pin)
+
+        def cleanup(self):
+            safe_gpio.cleanup()
+
+    BACKEND = SafeWrapper()
+    LOGGER.info("Using SafeGPIO fallback backend")
 
 
-# ---------------------------------------------------------
-# Module-level functions expected everywhere in Tokymon
-# ---------------------------------------------------------
-def setup(pin, mode):
-    return BACKEND.setup(pin, mode)
-
-def write(pin, value):
-    return BACKEND.write(pin, value)
-
-def read(pin):
-    return BACKEND.read(pin)
-
-def cleanup():
-    return BACKEND.cleanup()
+# Public API
+def setup(pin, mode): return BACKEND.setup(pin, mode)
+def write(pin, value): return BACKEND.write(pin, value)
+def read(pin): return BACKEND.read(pin)
+def cleanup(): return BACKEND.cleanup()
