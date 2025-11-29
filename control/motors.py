@@ -8,20 +8,21 @@ from system.logger import get_logger
 LOGGER = get_logger("motors")
 PINS = CONFIG["pinmap"]["motors"]
 
-A_IN1 = PINS["motor_a"]["in1"]
-A_IN2 = PINS["motor_a"]["in2"]
-B_IN3 = PINS["motor_b"]["in3"]
-B_IN4 = PINS["motor_b"]["in4"]
+GLOBAL_OFFSET = 569
+IN1 = CONFIG["pinmap"]["motors"]["motor_a"]["in1"] + GLOBAL_OFFSET
+IN2 = CONFIG["pinmap"]["motors"]["motor_a"]["in2"] + GLOBAL_OFFSET
+IN3 = CONFIG["pinmap"]["motors"]["motor_b"]["in3"] + GLOBAL_OFFSET
+IN4 = CONFIG["pinmap"]["motors"]["motor_b"]["in4"] + GLOBAL_OFFSET
 
-for pin in (A_IN1, A_IN2, B_IN3, B_IN4):
+for pin in (IN1, IN2, IN3, IN4):
     rpi_gpio.setup(pin, "out")
 
 
 def _set_motor(a_forward: bool, b_forward: bool) -> None:
-    rpi_gpio.write(A_IN1, a_forward)
-    rpi_gpio.write(A_IN2, not a_forward)
-    rpi_gpio.write(B_IN3, b_forward)
-    rpi_gpio.write(B_IN4, not b_forward)
+    rpi_gpio.write(IN1, a_forward)
+    rpi_gpio.write(IN2, not a_forward)
+    rpi_gpio.write(IN3, b_forward)
+    rpi_gpio.write(IN4, not b_forward)
 
 
 def forward() -> None:
@@ -46,7 +47,7 @@ def turn_right() -> None:
 
 def stop() -> None:
     LOGGER.info("Motors stop")
-    rpi_gpio.write(A_IN1, False)
-    rpi_gpio.write(A_IN2, False)
-    rpi_gpio.write(B_IN3, False)
-    rpi_gpio.write(B_IN4, False)
+    rpi_gpio.write(IN1, False)
+    rpi_gpio.write(IN2, False)
+    rpi_gpio.write(IN3, False)
+    rpi_gpio.write(IN4, False)

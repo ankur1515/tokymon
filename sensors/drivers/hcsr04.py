@@ -15,8 +15,15 @@ USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 TIMEOUT = 0.02
 POLL_SLEEP = 0.0001
 
-rpi_gpio.setup(PINS["trig"], "out")
-rpi_gpio.setup(PINS["echo"], "in")
+BCM_TRIG = CONFIG["pinmap"]["ultrasonic_hcsr04"]["trig"]
+BCM_ECHO = CONFIG["pinmap"]["ultrasonic_hcsr04"]["echo"]
+
+GLOBAL_OFFSET = 569
+TRIG = BCM_TRIG + GLOBAL_OFFSET
+ECHO = BCM_ECHO + GLOBAL_OFFSET
+
+rpi_gpio.setup(TRIG, "out")
+rpi_gpio.setup(ECHO, "in")
 
 # Note: echo pin uses a 2k/1k resistor divider. Keep echo pin as input only.
 
@@ -26,19 +33,16 @@ def measure_distance_cm() -> float:
     if USE_SIM:
         return simulator.read_distance_cm()
 
-    trig_pin = PINS["trig"]
-    echo_pin = PINS["echo"]
-
-    rpi_gpio.write(trig_pin, False)
+    rpi_gpio.write(TRIG, False)
     time.sleep(0.05)
 
-    rpi_gpio.write(trig_pin, True)
+    rpi_gpio.write(TRIG, True)
     time.sleep(0.00001)
-    rpi_gpio.write(trig_pin, False)
+    rpi_gpio.write(TRIG, False)
 
     start_deadline = time.time() + TIMEOUT
     while time.time() < start_deadline:
-        if rpi_gpio.read(echo_pin):
+        if rpi_gpio.read(ECHO):
             pulse_start = time.time()
             break
         time.sleep(POLL_SLEEP)
@@ -48,7 +52,7 @@ def measure_distance_cm() -> float:
 
     end_deadline = time.time() + TIMEOUT
     while time.time() < end_deadline:
-        if not rpi_gpio.read(echo_pin):
+        if not rpi_gpio.read(ECHO):
             pulse_end = time.time()
             break
         time.sleep(POLL_SLEEP)
