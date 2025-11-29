@@ -11,7 +11,7 @@ USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 def get_ultrasonic_reader():
     if USE_SIM:
         return simulator.read_distance_cm
-    return hcsr04.measure_distance_cm
+    return hcsr04.read_distance_cm
 
 
 def get_ir_left_reader():

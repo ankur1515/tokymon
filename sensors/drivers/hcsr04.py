@@ -1,68 +1,72 @@
-"""HC-SR04 ultrasonic sensor driver (extracted from raw_scripts/ultrasonic_test.py)."""
+"""
+HC-SR04 ultrasonic distance driver.
+
+Works on Raspberry Pi 5 using SafeGPIO backend.
+
+"""
+
 from __future__ import annotations
+
+GLOBAL_OFFSET = 559
 
 import time
 
 from drivers import rpi_gpio
-from sensors import simulator
 from system.config import CONFIG
 from system.logger import get_logger
 
 LOGGER = get_logger("hcsr04")
-PINS = CONFIG["pinmap"]["ultrasonic_hcsr04"]
-USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 
-TIMEOUT = 0.02
-POLL_SLEEP = 0.0001
-
+# Load pins from config and convert BCM to GLOBAL
 BCM_TRIG = CONFIG["pinmap"]["ultrasonic_hcsr04"]["trig"]
 BCM_ECHO = CONFIG["pinmap"]["ultrasonic_hcsr04"]["echo"]
 
-GLOBAL_OFFSET = 569
 TRIG = BCM_TRIG + GLOBAL_OFFSET
 ECHO = BCM_ECHO + GLOBAL_OFFSET
 
+# Setup GPIO directions
 rpi_gpio.setup(TRIG, "out")
 rpi_gpio.setup(ECHO, "in")
 
-# Note: echo pin uses a 2k/1k resistor divider. Keep echo pin as input only.
+# Constants
+MAX_WAIT = 0.02          # 20 ms timeout
+SPEED_OF_SOUND = 34300   # cm/s
 
 
-def measure_distance_cm() -> float:
-    """Measure distance using exact timing from ultrasonic_test.py."""
-    if USE_SIM:
-        return simulator.read_distance_cm()
+def read_distance_cm() -> float:
+    """
+    Returns distance in cm using HC-SR04.
+    Returns -1 on timeout.
+    """
+    # Ensure trigger LOW
+    rpi_gpio.write(TRIG, 0)
+    time.sleep(0.0002)
 
-    rpi_gpio.write(TRIG, False)
-    time.sleep(0.05)
-
-    rpi_gpio.write(TRIG, True)
+    # Send 10µs trigger pulse
+    rpi_gpio.write(TRIG, 1)
     time.sleep(0.00001)
-    rpi_gpio.write(TRIG, False)
+    rpi_gpio.write(TRIG, 0)
 
-    start_deadline = time.time() + TIMEOUT
-    while time.time() < start_deadline:
-        if rpi_gpio.read(ECHO):
-            pulse_start = time.time()
-            break
-        time.sleep(POLL_SLEEP)
-    else:
-        LOGGER.warning("Echo timeout waiting for HIGH")
-        return -1.0
+    # Wait for echo HIGH (start)
+    start_time = time.time()
+    while rpi_gpio.read(ECHO) == 0:
+        if time.time() - start_time > MAX_WAIT:
+            LOGGER.warning("Ultrasonic timeout: no echo start")
+            return -1
 
-    end_deadline = time.time() + TIMEOUT
-    while time.time() < end_deadline:
-        if not rpi_gpio.read(ECHO):
-            pulse_end = time.time()
-            break
-        time.sleep(POLL_SLEEP)
-    else:
-        LOGGER.warning("Echo timeout waiting for LOW")
-        return -1.0
+    pulse_start = time.time()
 
-    duration = pulse_end - pulse_start
-    dist = duration * 17150
-    if dist < 2 or dist > 400:
-        LOGGER.warning("Distance out of range: %.2f cm", dist)
-        return -1.0
-    return round(dist, 2)
+    # Wait for echo LOW (end)
+    while rpi_gpio.read(ECHO) == 1:
+        if time.time() - pulse_start > MAX_WAIT:
+            LOGGER.warning("Ultrasonic timeout: no echo end")
+            return -1
+
+    pulse_end = time.time()
+
+    pulse_duration = pulse_end - pulse_start
+    distance = (pulse_duration * SPEED_OF_SOUND) / 2
+    return round(distance, 2)
+
+
+LOGGER.info(f"HC-SR04 driver loaded: TRIG={TRIG}, ECHO={ECHO}")
