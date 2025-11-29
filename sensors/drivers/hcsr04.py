@@ -13,7 +13,7 @@ BCM_TRIG = int(CONFIG["pinmap"]["ultrasonic_hcsr04"]["trig"])   # usually 23
 BCM_ECHO = int(CONFIG["pinmap"]["ultrasonic_hcsr04"]["echo"])   # usually 24
 
 # Raspberry Pi 5 sysfs global GPIO offset discovered from working tests
-GLOBAL_OFFSET = 559
+GLOBAL_OFFSET = 569
 
 # Convert BCM → global GPIO numbering used in /sys/class/gpio
 TRIG = BCM_TRIG + GLOBAL_OFFSET   # 23 + 559 = 582
