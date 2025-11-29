@@ -79,6 +79,16 @@ sudo systemctl enable --now tokymon.service
 - `scripts/` – setup/deploy helpers plus systemd unit
 - `tests/` – unit + integration tests (simulator powered)
 
+## LED Matrix
+
+The MAX7219 driver auto-detects SPI port/device and tries different cascaded/orientation combinations. Expression drawing functions are in `display/expressions.py`.
+
+- **Auto-detection**: Scans `/dev/spidev*` nodes and tries combinations of (port, device, cascaded, orientation)
+- **Default values**: cascaded=4, contrast=8, block_orientation=0 (configurable via `CONFIG["board_options"]`)
+- **Expressions**: Use `display.max7219_driver.show_expression(name)` where name can be "normal", "listening", "speaking", "hello", "smile", etc.
+- **Text scrolling**: Use `show_text(text, speed=0.03)` for horizontal scrolling text
+- **Simulator mode**: In `TOKY_ENV=dev`, all display operations are logged only (no SPI access)
+
 ## Safety Notes
 
 - Policy engine whitelists `move` actions and clamps durations.

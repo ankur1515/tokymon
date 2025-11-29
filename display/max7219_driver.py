@@ -1,236 +1,167 @@
-"""MAX7219 LED matrix driver (extracted from raw_scripts/tokymon_max7219_faces_round_eyes_central.py)."""
+# display/max7219_driver.py
 from __future__ import annotations
 
-import math
+import os
 import time
-from typing import Literal
+import glob
 
 from system.config import CONFIG
 from system.logger import get_logger
 
-LOGGER = get_logger("max7219")
-SPI = CONFIG["pinmap"]["led_matrix"]["spi"]
+LOGGER = get_logger("max7219_driver")
+
+# Config-driven defaults
+CANDIDATE_CASCADE = CONFIG.get("board_options", {}).get("led_matrix_cascaded", 4)
+DEFAULT_CONTRAST = CONFIG.get("board_options", {}).get("led_contrast", 8)
+DEFAULT_BLOCK_ORIENTATION = CONFIG.get("board_options", {}).get("block_orientation", 0)
 USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 
-CASCADED = 4
-W, H = 8 * CASCADED, 8
-_device = None
+# Internal state
+_DEVICE = None
+_SERIAL = None
+_DETECTED = {"port": None, "device": None, "cascaded": None, "orientation": None}
 
 
-def _make_device(contrast: int = 9):
-    """Initialize MAX7219 device (luma.led_matrix)."""
-    global _device
-    if USE_SIM or _device is not None:
-        return _device
-    try:
-        from luma.core.interface.serial import spi as luma_spi, noop
-        from luma.led_matrix.device import max7219 as luma_max7219
-
-        serial = luma_spi(port=0, device=0, gpio=noop())
-        _device = luma_max7219(
-            serial,
-            cascaded=CASCADED,
-            rotate=0,
-            block_orientation=90,
-            blocks_arranged_in_reverse_order=True,
-        )
-        _device.contrast(contrast)
-        LOGGER.info("MAX7219 initialized (MOSI=%s CLK=%s CS=%s)", SPI["mosi"], SPI["clk"], SPI["cs"])
-    except ImportError:
-        LOGGER.warning("luma.led_matrix not installed; display will be mocked")
-    except Exception as exc:
-        LOGGER.warning("MAX7219 init failed: %s", exc)
-    return _device
+def _list_spidev_nodes():
+    """Returns list of tuples (port, device) for /dev/spidevX.Y"""
+    nodes = glob.glob("/dev/spidev*")
+    out = []
+    for n in nodes:
+        try:
+            base = os.path.basename(n)  # e.g. spidev0.0 or spidev10.0
+            parts = base.replace("spidev", "").split(".")
+            port = int(parts[0])
+            device = int(parts[1])
+            out.append((port, device))
+        except Exception:
+            continue
+    return sorted(set(out))
 
 
-def init_display(contrast: int = 9) -> None:
-    """Initialize the LED matrix display."""
-    _make_device(contrast)
+def _try_init(port, device, cascaded, orientation, contrast):
+    """Try to init a device; returns device object or raises."""
+    from luma.core.interface.serial import spi, noop
+    from luma.led_matrix.device import max7219
+
+    serial = spi(port=port, device=device, gpio=noop())
+    dev = max7219(serial, cascaded=cascaded, block_orientation=orientation)
+    dev.contrast(contrast)
+    return dev
+
+
+def _auto_detect_and_init():
+    global _DEVICE, _SERIAL, _DETECTED
     if USE_SIM:
-        LOGGER.info("MAX7219 simulator mode (no hardware)")
+        LOGGER.info("Simulator mode - skipping hardware init")
+        return None
+
+    candidates = _list_spidev_nodes()
+    if not candidates:
+        LOGGER.warning("No spidev nodes found; skipping init")
+        return None
+
+    cascaded_options = [CANDIDATE_CASCADE] + list(range(1, 9))
+    orientation_options = [DEFAULT_BLOCK_ORIENTATION, 0, 90, 180, 270]
+    contrast = DEFAULT_CONTRAST
+
+    for (port, device) in candidates:
+        for casc in cascaded_options:
+            for orient in orientation_options:
+                try:
+                    dev = _try_init(port, device, casc, orient, contrast)
+                    # quick all-on test: draw a rectangle briefly to validate wiring
+                    from luma.core.render import canvas
+                    with canvas(dev) as draw:
+                        draw.rectangle((0, 0, dev.width - 1, dev.height - 1), outline=255, fill=255)
+                    # small pause to allow visual confirmation
+                    time.sleep(0.05)
+                    # success: keep this device
+                    _DEVICE = dev
+                    _DETECTED.update({"port": port, "device": device, "cascaded": casc, "orientation": orient})
+                    LOGGER.info("MAX7219 init ok: port=%s device=%s cascaded=%s orient=%s", port, device, casc, orient)
+                    return _DEVICE
+                except Exception as e:
+                    LOGGER.debug("max7219 try failed port=%s dev=%s casc=%s orient=%s -> %s", port, device, casc, orient, e)
+                    # try next combination
+                    continue
+    LOGGER.error("Auto-detect failed for MAX7219; no working combination found")
+    return None
 
 
-def _px_any(draw, x: int, y: int, on: bool = True) -> None:
-    if on and 0 <= x < W and 0 <= y < H:
-        draw.point((x, y), fill=255)
+# Public API:
 
 
-def _eye_full_circle(draw, box: tuple[int, int, int, int], pupil: str = "c", blink_stage: int = 0) -> None:
-    """Draw eye with blink animation (from raw_scripts)."""
-    x1, y1, x2, y2 = box
-    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-    r = 3
+def init_display(force=False):
+    """
+    Initialize display device. If already initialized and not forced, return existing.
+    In dev mode this is a no-op (logs only).
+    """
+    global _DEVICE
+    if _DEVICE is not None and not force:
+        return _DEVICE
+    if USE_SIM:
+        LOGGER.info("init_display: simulator mode, no hardware init")
+        return None
+    _DEVICE = _auto_detect_and_init()
+    return _DEVICE
 
-    if blink_stage == 2:
-        for x in range(x1, x2 + 1):
-            _px_any(draw, x, cy)
-            _px_any(draw, x, min(H - 1, cy + 1))
+
+def _require_device():
+    if USE_SIM:
+        raise RuntimeError("Simulator mode: display not available")
+    if _DEVICE is None:
+        raise RuntimeError("Display not initialized; call init_display() first")
+    return _DEVICE
+
+
+def show_expression(name: str, duration_s: float = 1.2):
+    """
+    Show a named expression. Use the expression map from the raw script.
+    In dev mode, log and return.
+    """
+    if USE_SIM:
+        LOGGER.info("show_expression(sim): %s", name)
         return
-    elif blink_stage == 1:
-        for x in range(x1, x2 + 1):
-            _px_any(draw, x, cy)
+    dev = _require_device()
 
-    r2 = r * r
-    for x in range(x1, x2 + 1):
-        for y in range(y1, y2 + 1):
-            dist2 = (x - cx) ** 2 + (y - cy) ** 2
-            if (r2 - 2 <= dist2 <= r2 + 1) or (r2 - 5 <= dist2 <= r2 - 4):
-                _px_any(draw, x, y)
+    # Use expressions from display.expressions module
+    from display.expressions import draw_face_frame
+    from luma.core.render import canvas
 
-    ox = oy = 0
-    if pupil == "l":
-        ox = -1
-    elif pupil == "r":
-        ox = +1
-    elif pupil == "u":
-        oy = -1
-    elif pupil == "d":
-        oy = +1
-
-    for dx in (0, 1):
-        for dy in (0, 1):
-            _px_any(draw, cx + ox + dx, cy + oy + dy)
-
-
-def _draw_eyes(draw, pupil_dir: str = "c", blink_phase: int = 0) -> None:
-    LBOX = (1, 0, 6, 5)
-    RBOX = (W - 7, 0, W - 2, 5)
-    _eye_full_circle(draw, LBOX, pupil=pupil_dir, blink_stage=blink_phase)
-    _eye_full_circle(draw, RBOX, pupil=pupil_dir, blink_stage=blink_phase)
-
-
-def _nose_block(draw) -> None:
-    CX1, CX2 = 8, 23
-    MARGIN = 2
-    IN_X1, IN_X2 = CX1 + MARGIN, CX2 - MARGIN
-    MIDX = (CX1 + CX2) // 2
-    x1, x2 = max(IN_X1, MIDX - 1), min(IN_X2, MIDX)
-    for y in (0, 1, 2, 3):
-        _px_any(draw, x1, y)
-        _px_any(draw, x2, y)
-
-
-def _mouth_neutral_round(draw) -> None:
-    CX1, CX2 = 8, 23
-    MARGIN = 2
-    IN_X1, IN_X2 = CX1 + MARGIN, CX2 - MARGIN
-    MIDX = (CX1 + CX2) // 2
-    R = 6
-    cy = 9
-    for x in range(IN_X1, IN_X2 + 1):
-        dx = x - MIDX
-        val = R * R - dx * dx
-        if val >= 0:
-            y = int(cy - math.sqrt(val))
-            if 5 <= y <= 7:
-                _px_any(draw, x, y)
-            if 5 <= y + 1 <= 7:
-                _px_any(draw, x, y + 1)
-
-
-def _mouth_oval_talk(draw, t: float) -> None:
-    CX1, CX2 = 8, 23
-    MARGIN = 2
-    IN_X1, IN_X2 = CX1 + MARGIN, CX2 - MARGIN
-    MIDX = (CX1 + CX2) // 2
-    a = max(4, (IN_X2 - IN_X1) // 2 - 1)
-    b = 2 if (math.sin(t * 6) > 0) else 1
-    cy = 6
-    for x in range(IN_X1, IN_X2 + 1):
-        dx = (x - MIDX) / a
-        t2 = 1 - dx * dx
-        if t2 >= 0:
-            dy = b * math.sqrt(t2)
-            y1 = int(cy - dy)
-            y2 = int(cy + dy)
-            y1 = max(5, min(7, y1))
-            y2 = max(5, min(7, y2))
-            _px_any(draw, x, y1)
-            _px_any(draw, x, y2)
-
-
-def _level_meter(draw, t: float) -> None:
-    CX1, CX2 = 8, 23
-    MARGIN = 2
-    IN_X1, IN_X2 = CX1 + MARGIN, CX2 - MARGIN
-    span = IN_X2 - IN_X1
-    n = 2 + int((math.sin(t * 5) + 1) / 2 * span)
-    for x in range(IN_X1, IN_X1 + n):
-        _px_any(draw, x, 7)
-
-
-def show_expression(name: str, duration: float = 2.0) -> None:
-    """Show face expression (normal/listening/speaking) with animation."""
-    device = _make_device()
-    if device is None and not USE_SIM:
-        LOGGER.warning("Display not initialized; skipping expression %s", name)
-        return
-
-    mode: Literal["normal", "listening", "speaking"] = "normal"
-    if name in ("listening", "alert"):
-        mode = "listening"
-    elif name in ("speaking", "happy"):
-        mode = "speaking"
+    # Map expression names to modes
+    mode_map = {
+        "normal": "normal",
+        "listening": "listening",
+        "alert": "listening",
+        "speaking": "speaking",
+        "happy": "speaking",
+        "hello": "normal",
+        "smile": "normal",
+    }
+    mode = mode_map.get(name, "normal")
 
     t0 = time.time()
-    next_blink = t0 + 1.2
-    blink_frame = 0
+    while time.time() - t0 < duration_s:
+        with canvas(dev) as draw:
+            draw_face_frame(draw, dev, mode, time.time() - t0)
+        time.sleep(0.06)
 
+
+def show_text(text: str, speed: float = 0.03):
     if USE_SIM:
-        LOGGER.debug("Display expression %s (simulator)", name)
+        LOGGER.info("show_text(sim): %s", text)
         return
-
-    try:
-        from luma.core.render import canvas
-
-        while time.time() - t0 < duration:
-            now = time.time()
-
-            if mode == "listening":
-                s = math.sin(now * 2.0)
-                pupil_dir = "l" if s < -0.35 else ("r" if s > 0.35 else "c")
-            else:
-                pupil_dir = "c"
-
-            if next_blink <= now < next_blink + 0.08:
-                blink_frame = 1
-            elif next_blink + 0.08 <= now < next_blink + 0.16:
-                blink_frame = 2
-            else:
-                blink_frame = 0
-            if now >= next_blink + 0.6:
-                next_blink = now + 1.2 + 0.6 * math.sin(now)
-
-            with canvas(device) as draw:
-                _draw_eyes(draw, pupil_dir=pupil_dir, blink_phase=blink_frame)
-                _nose_block(draw)
-                if mode == "speaking":
-                    _mouth_oval_talk(draw, now - t0)
-                    _level_meter(draw, now - t0)
-                elif mode == "listening":
-                    _mouth_neutral_round(draw)
-                    _level_meter(draw, now - t0)
-                else:
-                    _mouth_neutral_round(draw)
-
-            time.sleep(0.06)
-    except Exception as exc:
-        LOGGER.warning("Display expression failed: %s", exc)
+    dev = _require_device()
+    # Port the horizontal text function from raw script
+    from display.expressions import draw_text_horizontal
+    draw_text_horizontal(dev, text, _DETECTED.get("orientation", DEFAULT_BLOCK_ORIENTATION), speed)
 
 
-def show_text(text: str, speed: float = 0.03) -> None:
-    """Show scrolling text (placeholder; full implementation requires PIL font rendering)."""
-    LOGGER.info("Display text: %s (speed=%.2f)", text, speed)
+def clear():
     if USE_SIM:
+        LOGGER.info("clear(sim)")
         return
-    device = _make_device()
-    if device is None:
-        return
-    try:
-        from luma.core.render import canvas
-
-        with canvas(device) as draw:
-            draw.text((0, 0), text[:16], fill=255)
-        time.sleep(1.0)
-    except Exception as exc:
-        LOGGER.warning("Display text failed: %s", exc)
+    dev = _require_device()
+    from luma.core.render import canvas
+    with canvas(dev) as draw:
+        draw.rectangle((0, 0, dev.width - 1, dev.height - 1), outline=0, fill=0)
