@@ -1,60 +1,52 @@
-"""GPIO abstraction that toggles between real hardware and simulator."""
-from __future__ import annotations
+# Tokymon – Raspberry Pi 5 Safe GPIO Backend (sysfs only)
+# -------------------------------------------------------
+# This backend never loads RPi.GPIO (unsupported on Pi5)
+# and uses ONLY sysfs GPIO — same as your working scripts.
 
-try:
-    from .safe_gpio import SafeGPIO
-except ImportError:
-    from .safe_gpio import setup as safe_setup, write as safe_write, read as safe_read, cleanup as safe_cleanup
+import os
+import time
 
-    class SafeGPIO:
-        def setup(self, pin, mode):
-            safe_setup(pin, mode)
-
-        def write(self, pin, val):
-            safe_write(pin, val)
-
-        def read(self, pin):
-            return safe_read(pin)
-
-        def cleanup(self):
-            safe_cleanup()
-
-try:
-    import RPi.GPIO as _gpio
-
-    class RpiBackend:
-        def __init__(self):
-            _gpio.setmode(_gpio.BCM)
-
-        def setup(self, pin, mode):
-            _gpio.setup(pin, _gpio.OUT if mode == "out" else _gpio.IN)
-
-        def write(self, pin, val):
-            _gpio.output(pin, _gpio.HIGH if val else _gpio.LOW)
-
-        def read(self, pin):
-            return _gpio.input(pin)
-
-        def cleanup(self):
-            _gpio.cleanup()
-
-    BACKEND = RpiBackend()
-
-except Exception:
-    BACKEND = SafeGPIO()
+SYSFS = "/sys/class/gpio"
 
 
-def setup(pin: int, mode: str) -> None:
-    BACKEND.setup(pin, mode)
+class SysfsGPIO:
+    def __init__(self):
+        pass
+
+    def _export(self, pin):
+        if not os.path.exists(f"{SYSFS}/gpio{pin}"):
+            try:
+                with open(f"{SYSFS}/export", "w") as f:
+                    f.write(str(pin))
+                time.sleep(0.05)
+            except Exception:
+                pass
+
+    def setup(self, pin, mode):
+        self._export(pin)
+        try:
+            with open(f"{SYSFS}/gpio{pin}/direction", "w") as f:
+                f.write("out" if mode == "out" else "in")
+        except Exception:
+            pass
+
+    def write(self, pin, val):
+        try:
+            with open(f"{SYSFS}/gpio{pin}/value", "w") as f:
+                f.write("1" if val else "0")
+        except Exception:
+            pass
+
+    def read(self, pin):
+        try:
+            with open(f"{SYSFS}/gpio{pin}/value", "r") as f:
+                return f.read().strip() == "1"
+        except Exception:
+            return False
+
+    def cleanup(self):
+        pass
 
 
-def write(pin: int, value: bool) -> None:
-    BACKEND.write(pin, value)
-
-
-def read(pin: int) -> bool:
-    return BACKEND.read(pin)
-
-
-def cleanup() -> None:
-    BACKEND.cleanup()
+# Always use sysfs backend (Pi 5 safe)
+BACKEND = SysfsGPIO()
