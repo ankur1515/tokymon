@@ -1,33 +1,59 @@
 """
-Unified GPIO backend for Tokymon.
+Unified SafeGPIO backend for Raspberry Pi 5.
 
-Raspberry Pi 5 does NOT support RPi.GPIO → 
-therefore always fall back to SafeGPIO backend.
+This backend removes:
+- RPi.GPIO
+- gpiod
+- sysfs GPIO
+- backend auto-detection
+
+Everything goes through SafeGPIO for 100% Pi5 compatibility.
 """
 
-from .safe_gpio import (
-    setup as safe_setup,
-    write as safe_write,
-    read as safe_read,
-    cleanup as safe_cleanup,
-)
+from __future__ import annotations
+from drivers import safe_gpio as SafeGPIO
+
 from system.logger import get_logger
 
 LOGGER = get_logger("rpi_gpio")
 
 
-def setup(pin, mode):
-    LOGGER.info("Using SafeGPIO backend")
-    return safe_setup(pin, mode)
+# Always use SafeGPIO backend – it is Pi5-safe and consistent
+class RpiBackend:
+
+    def __init__(self):
+        LOGGER.info("Using SafeGPIO backend")
+        self.backend = SafeGPIO
+
+    def setup(self, pin: int, mode: str) -> None:
+        return self.backend.setup(pin, mode)
+
+    def write(self, pin: int, value: bool) -> None:
+        return self.backend.write(pin, value)
+
+    def read(self, pin: int) -> bool:
+        return self.backend.read(pin)
+
+    def cleanup(self) -> None:
+        return self.backend.cleanup()
 
 
-def write(pin, value):
-    return safe_write(pin, value)
+# Instantiate global backend
+BACKEND = RpiBackend()
 
 
-def read(pin):
-    return safe_read(pin)
+# Public API wrappers
+def setup(pin: int, mode: str) -> None:
+    return BACKEND.setup(pin, mode)
 
 
-def cleanup():
-    return safe_cleanup()
+def write(pin: int, value: bool) -> None:
+    return BACKEND.write(pin, value)
+
+
+def read(pin: int) -> bool:
+    return BACKEND.read(pin)
+
+
+def cleanup() -> None:
+    return BACKEND.cleanup()
