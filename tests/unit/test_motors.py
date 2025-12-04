@@ -21,11 +21,31 @@ class FakeBackend:
 
 
 def test_forward_and_stop_sets_pins():
+    """Test TB6612 motor control with Motor A polarity fix."""
     fake = FakeBackend()
     rpi_gpio.BACKEND = fake
-    motors.forward()
-    pins = CONFIG["pinmap"]["motors"]
-    assert fake.state[pins["motor_a"]["in1"]] is True
-    assert fake.state[pins["motor_a"]["in2"]] is False
-    motors.stop()
-    assert all(value is False for value in fake.state.values())
+    # Force non-simulator mode for this test
+    import control.motors as motors_module
+    original_sim = motors_module.USE_SIM
+    motors_module.USE_SIM = False
+    motors_module._h = None  # Force rpi_gpio fallback
+    
+    try:
+        motors.forward()
+        # TB6612 Motor A: AIN1=LOW (False), AIN2=HIGH (True) for forward
+        # TB6612 Motor B: BIN1=HIGH (True), BIN2=LOW (False) for forward
+        assert motors_module.AIN1_PIN in fake.state
+        assert motors_module.AIN2_PIN in fake.state
+        assert fake.state[motors_module.AIN1_PIN] is False  # Motor A polarity fix
+        assert fake.state[motors_module.AIN2_PIN] is True
+        assert fake.state[motors_module.BIN1_PIN] is True
+        assert fake.state[motors_module.BIN2_PIN] is False
+        
+        motors.stop()
+        # After stop (coast), all direction pins should be False
+        assert fake.state[motors_module.AIN1_PIN] is False
+        assert fake.state[motors_module.AIN2_PIN] is False
+        assert fake.state[motors_module.BIN1_PIN] is False
+        assert fake.state[motors_module.BIN2_PIN] is False
+    finally:
+        motors_module.USE_SIM = original_sim
