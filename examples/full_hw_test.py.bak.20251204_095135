@@ -82,17 +82,6 @@ def test_led():
 def test_audio():
     header("TEST 2 — AUDIO (mic record 5s + playback)")
     
-    # Check simulator mode
-    USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
-    TOKY_ENV = os.environ.get("TOKY_ENV", "dev").lower()
-    is_sim = USE_SIM or (TOKY_ENV == "dev")
-    
-    if is_sim:
-        print("[SIM] Audio test (simulator mode - skipping actual recording/playback)")
-        print("[SIM] Would record 5s to data/temp/Audio/tokymon_test.wav")
-        print("[SIM] Would play on device from AUDIO_PLAYBACK env or plughw:3,0")
-        return
-    
     # Use data/temp/Audio directory for audio files
     audio_dir = Path(CONFIG.get("runtime", {}).get("root_path", ".")) / "data" / "temp" / "Audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
@@ -100,8 +89,8 @@ def test_audio():
     
     print(f"Recording 5 seconds to {outfile}")
     
-    # Prefer USB mic plughw:2,0, then fallback to default
-    record_devs = ["plughw:2,0", None]
+    # Try recording with different devices
+    record_devs = [None, "plughw:2,0", "plughw:1,0", "hw:2,0"]
     recorded = False
     
     for dev in record_devs:
@@ -127,17 +116,39 @@ def test_audio():
         print("Try: arecord -l  # to list devices")
         return
     
-    # Use AUDIO_PLAYBACK env var, fallback to plughw:3,0, then default
-    device = os.environ.get("AUDIO_PLAYBACK", "plughw:3,0")
-    print("Playing recorded audio (5 seconds)...")
-    print(f"Playing recorded audio on: {device}")
+    # Get available playback devices
+    print("Checking available playback devices...")
+    playback_devs = []
+    try:
+        result = subprocess.run(["aplay", "-l"], capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            # Parse output to find devices
+            for line in result.stdout.split('\n'):
+                if 'card' in line and 'device' in line:
+                    # Extract card and device numbers
+                    import re
+                    match = re.search(r'card (\d+).*device (\d+)', line)
+                    if match:
+                        card, device = match.groups()
+                        playback_devs.append(f"plughw:{card},{device}")
+                        playback_devs.append(f"hw:{card},{device}")
+    except:
+        pass
     
+    # Add fallback devices
+    playback_devs.extend([None, "plughw:0,0", "plughw:1,0", "sysdefault", "default", "pulse"])
+    
+    # Try playback with different devices
+    print("Playing recorded audio (5 seconds)...")
     played = False
-    playback_devs = [device, "plughw:3,0", None]  # Try env var first, then fallback
     
     for dev in playback_devs:
         try:
-            cmd = ["aplay", "-D", dev, outfile] if dev else ["aplay", outfile]
+            cmd = ["aplay", outfile]
+            if dev:
+                cmd.insert(1, "-D")
+                cmd.insert(2, dev)
+            print(f"Trying playback device: {dev or 'default'}...")
             rc = subprocess.call(cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, timeout=10)
             if rc == 0:
                 print(f"[OK] Playback successful (device: {dev or 'default'})")
@@ -163,16 +174,6 @@ def test_audio():
 # ------------------------------------------------------------
 def test_camera():
     header("TEST 3 — CAMERA (capture and show)")
-    
-    # Check simulator mode
-    USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
-    TOKY_ENV = os.environ.get("TOKY_ENV", "dev").lower()
-    is_sim = USE_SIM or (TOKY_ENV == "dev")
-    
-    if is_sim:
-        print("[SIM] Camera test (simulator mode - skipping actual capture)")
-        print("[SIM] Would capture to data/temp/tokymon_photo.jpg")
-        return
     
     # Use data/temp for camera photos
     camera_dir = Path(CONFIG.get("runtime", {}).get("root_path", ".")) / "data" / "temp"
@@ -200,84 +201,76 @@ def test_camera():
     except:
         pass
     
-    # Use rpicam-still/rpicam-hello detection, fallback to libcamera-still
+    # Try different camera binaries and paths with various options
+    camera_commands = [
+        # libcamera-still with different options
+        (["libcamera-still", "-o", out_photo, "-t", "1000", "--timeout", "5000"], "libcamera-still"),
+        (["libcamera-still", "-o", out_photo, "-t", "1000"], "libcamera-still (basic)"),
+        (["/usr/bin/libcamera-still", "-o", out_photo, "-t", "1000", "--timeout", "5000"], "/usr/bin/libcamera-still"),
+        # raspistill (legacy)
+        (["raspistill", "-o", out_photo, "-t", "1000"], "raspistill"),
+        (["/usr/bin/raspistill", "-o", out_photo, "-t", "1000"], "/usr/bin/raspistill"),
+    ]
+    
     captured = False
     last_error = None
     
-    if which("rpicam-still"):
-        print("Trying rpicam-still...")
+    for cmd, name in camera_commands:
+        binary_name = cmd[0].split('/')[-1]
+        if not which(binary_name) and not Path(cmd[0]).exists():
+            continue
         try:
-            result = subprocess.run(["rpicam-still", "-o", out_photo, "-t", "1000"], 
-                                  stderr=subprocess.PIPE, stdout=subprocess.PIPE, timeout=10)
+            print(f"Trying {name}...")
+            # Capture stderr to see actual errors
+            result = subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, timeout=10)
             if result.returncode == 0 and Path(out_photo).exists() and Path(out_photo).stat().st_size > 0:
                 file_size = Path(out_photo).stat().st_size
                 print(f"[OK] Camera capture successful!")
                 print(f"     File: {out_photo}")
                 print(f"     Size: {file_size} bytes")
-                print(f"     Using: rpicam-still")
+                print(f"     Using: {name}")
+                
+                # Show confirmation on LED display
+                try:
+                    disp.show_text("PHOTO")
+                    time.sleep(1)
+                    disp.show_expression("success")
+                    time.sleep(1)
+                    disp.clear()
+                except Exception as e:
+                    print(f"LED display warning: {e}")
+                
+                # Try to show image (if viewer available)
+                try:
+                    if which("feh"):
+                        print(f"Opening image with feh...")
+                        subprocess.Popen(["feh", out_photo], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                    elif which("xdg-open"):
+                        print(f"Opening image with xdg-open...")
+                        subprocess.Popen(["xdg-open", out_photo], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                    else:
+                        print(f"Image saved. View with: feh {out_photo}  or  xdg-open {out_photo}")
+                except:
+                    print(f"Image saved. View with: feh {out_photo}  or  xdg-open {out_photo}")
+                
                 captured = True
+                break
             else:
+                # Capture error message
                 if result.stderr:
                     error_msg = result.stderr.decode('utf-8', errors='ignore').strip()
                     if error_msg:
                         last_error = error_msg
                         print(f"  Error: {error_msg[:100]}")
         except subprocess.TimeoutExpired:
-            print("  Timeout waiting for camera")
+            print(f"  Timeout waiting for camera")
+            continue
         except Exception as e:
             last_error = str(e)
             print(f"  Exception: {e}")
-    elif which("libcamera-still"):
-        print("Trying libcamera-still...")
-        try:
-            result = subprocess.run(["libcamera-still", "-o", out_photo, "-t", "1000"], 
-                                  stderr=subprocess.PIPE, stdout=subprocess.PIPE, timeout=10)
-            if result.returncode == 0 and Path(out_photo).exists() and Path(out_photo).stat().st_size > 0:
-                file_size = Path(out_photo).stat().st_size
-                print(f"[OK] Camera capture successful!")
-                print(f"     File: {out_photo}")
-                print(f"     Size: {file_size} bytes")
-                print(f"     Using: libcamera-still")
-                captured = True
-            else:
-                if result.stderr:
-                    error_msg = result.stderr.decode('utf-8', errors='ignore').strip()
-                    if error_msg:
-                        last_error = error_msg
-                        print(f"  Error: {error_msg[:100]}")
-        except subprocess.TimeoutExpired:
-            print("  Timeout waiting for camera")
-        except Exception as e:
-            last_error = str(e)
-            print(f"  Exception: {e}")
-    else:
-        print("No camera capture binary found (rpicam-still/libcamera-still). Skipping camera test.")
-        return
+            continue
     
-    if captured:
-        # Show confirmation on LED display
-        try:
-            disp.show_text("PHOTO")
-            time.sleep(1)
-            disp.show_expression("success")
-            time.sleep(1)
-            disp.clear()
-        except Exception as e:
-            print(f"LED display warning: {e}")
-        
-        # Try to show image (if viewer available)
-        try:
-            if which("feh"):
-                print(f"Opening image with feh...")
-                subprocess.Popen(["feh", out_photo], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            elif which("xdg-open"):
-                print(f"Opening image with xdg-open...")
-                subprocess.Popen(["xdg-open", out_photo], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            else:
-                print(f"Image saved. View with: feh {out_photo}  or  xdg-open {out_photo}")
-        except:
-            print(f"Image saved. View with: feh {out_photo}  or  xdg-open {out_photo}")
-    else:
+    if not captured:
         print("[FAIL] Camera capture failed.")
         if last_error:
             print(f"Last error: {last_error}")
@@ -296,7 +289,8 @@ def test_camera():
         print("   ls -la /dev/video*")
         print("   Should show /dev/video0 or /dev/video10+")
         print("\n5. Test manually:")
-        print("   rpicam-still -o /tmp/test.jpg  or  libcamera-still -o /tmp/test.jpg")
+        print("   libcamera-still -o /tmp/test.jpg")
+        print("   If that works, camera is OK but script needs different options")
         print("\n6. Install/update camera tools:")
         print("   sudo apt-get update")
         print("   sudo apt-get install -y libcamera-apps")
