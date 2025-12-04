@@ -13,7 +13,7 @@ LOGGER = get_logger("max7219_driver")
 # Config-driven defaults
 CANDIDATE_CASCADE = CONFIG.get("board_options", {}).get("led_matrix_cascaded", 4)
 DEFAULT_CONTRAST = CONFIG.get("board_options", {}).get("led_contrast", 8)
-DEFAULT_BLOCK_ORIENTATION = CONFIG.get("board_options", {}).get("block_orientation", 0)
+DEFAULT_BLOCK_ORIENTATION = 180
 USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 
 # Internal state

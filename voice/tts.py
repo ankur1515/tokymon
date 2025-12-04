@@ -23,8 +23,10 @@ def synthesize(text: str) -> bytes:
         return _CACHE[text]
 
     try:
+        # Fixed speaker device
+        SPEAKER_DEVICE = "plughw:3,0"
         espeak_cmd = ["espeak", text, "--stdout"]
-        aplay_cmd = ["aplay", "-D", "plughw:2,0"]
+        aplay_cmd = ["aplay", "-D", SPEAKER_DEVICE]
         espeak_proc = subprocess.Popen(espeak_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         aplay_proc = subprocess.Popen(
             aplay_cmd, stdin=espeak_proc.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL

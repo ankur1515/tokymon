@@ -82,6 +82,10 @@ def test_led():
 def test_audio():
     header("TEST 2 — AUDIO (mic record 5s + playback)")
     
+    # Fixed audio devices
+    MIC_DEVICE = "plughw:1,0"
+    SPEAKER_DEVICE = "plughw:3,0"
+    
     # Check simulator mode
     USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
     TOKY_ENV = os.environ.get("TOKY_ENV", "dev").lower()
@@ -89,8 +93,8 @@ def test_audio():
     
     if is_sim:
         print("[SIM] Audio test (simulator mode - skipping actual recording/playback)")
-        print("[SIM] Would record 5s to data/temp/Audio/tokymon_test.wav")
-        print("[SIM] Would play on device from AUDIO_PLAYBACK env or plughw:3,0")
+        print(f"[SIM] Would record 5s to data/temp/Audio/tokymon_test.wav using mic: {MIC_DEVICE}")
+        print(f"[SIM] Would play on speaker: {SPEAKER_DEVICE}")
         return
     
     # Use data/temp/Audio directory for audio files
@@ -98,64 +102,47 @@ def test_audio():
     audio_dir.mkdir(parents=True, exist_ok=True)
     outfile = str(audio_dir / "tokymon_test.wav")
     
-    print(f"Recording 5 seconds to {outfile}")
+    record_dev = MIC_DEVICE
+    record_seconds = 5
     
-    # Prefer USB mic plughw:2,0, then fallback to default
-    record_devs = ["plughw:2,0", None]
-    recorded = False
+    print(f"Using mic: {record_dev}")
+    print(f"Using speaker: {SPEAKER_DEVICE}")
+    print(f"Recording for {record_seconds} seconds...")
     
-    for dev in record_devs:
-        try:
-            cmd = ["arecord", "-d", "5", "-f", "cd", outfile]  # 5 seconds
-            if dev:
-                cmd.insert(1, "-D")
-                cmd.insert(2, dev)
-            print(f"Trying recording device: {dev or 'default'}...")
-            rc = subprocess.call(cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            if rc == 0 and Path(outfile).exists() and Path(outfile).stat().st_size > 0:
-                file_size = Path(outfile).stat().st_size
-                print(f"Recording successful (device: {dev or 'default'}, size: {file_size} bytes)")
-                print(f"Audio file saved to: {outfile}")
-                recorded = True
-                break
-        except Exception as e:
-            print(f"Recording attempt failed: {e}")
-            continue
-    
-    if not recorded:
-        print("[FAIL] Could not record audio from any device.")
-        print("Try: arecord -l  # to list devices")
+    # Record with fixed device
+    try:
+        cmd = ["arecord", "-D", record_dev, "-d", str(record_seconds), "-f", "cd", outfile]
+        rc = subprocess.call(cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        if rc == 0 and Path(outfile).exists() and Path(outfile).stat().st_size > 0:
+            file_size = Path(outfile).stat().st_size
+            print(f"Recording successful (size: {file_size} bytes)")
+            print(f"Audio file saved to: {outfile}")
+        else:
+            print("[FAIL] Could not record audio.")
+            print("Try: arecord -l  # to list devices")
+            return
+    except Exception as e:
+        print(f"[FAIL] Recording failed: {e}")
         return
     
-    # Use AUDIO_PLAYBACK env var, fallback to plughw:3,0, then default
-    device = os.environ.get("AUDIO_PLAYBACK", "plughw:3,0")
+    # Playback with fixed device
+    playback_dev = SPEAKER_DEVICE
     print("Playing recorded audio (5 seconds)...")
-    print(f"Playing recorded audio on: {device}")
     
-    played = False
-    playback_devs = [device, "plughw:3,0", None]  # Try env var first, then fallback
-    
-    for dev in playback_devs:
-        try:
-            cmd = ["aplay", "-D", dev, outfile] if dev else ["aplay", outfile]
-            rc = subprocess.call(cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, timeout=10)
-            if rc == 0:
-                print(f"[OK] Playback successful (device: {dev or 'default'})")
-                played = True
-                break
-        except subprocess.TimeoutExpired:
-            print(f"Playback timeout on device: {dev or 'default'}")
-            continue
-        except Exception as e:
-            continue
-    
-    if not played:
-        print("[WARN] Playback failed on all devices.")
-        print("Try: aplay -l  # to list available devices")
-        print(f"Audio file saved at: {outfile}")
-        print("You can manually play with: aplay -D <device> " + outfile)
-    else:
-        print("[OK] Audio test passed (5s record + playback).")
+    try:
+        cmd = ["aplay", "-D", playback_dev, outfile]
+        rc = subprocess.call(cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, timeout=10)
+        if rc == 0:
+            print(f"[OK] Playback successful")
+            print("[OK] Audio test passed (5s record + playback).")
+        else:
+            print("[WARN] Playback failed.")
+            print("Try: aplay -l  # to list available devices")
+            print(f"Audio file saved at: {outfile}")
+    except subprocess.TimeoutExpired:
+        print("[WARN] Playback timeout")
+    except Exception as e:
+        print(f"[WARN] Playback error: {e}")
 
 
 # ------------------------------------------------------------
@@ -255,6 +242,18 @@ def test_camera():
         return
     
     if captured:
+        # Rotate image 180 degrees
+        try:
+            from PIL import Image
+            img = Image.open(out_photo)
+            img = img.rotate(180)
+            img.save(out_photo)
+            print("Image rotated 180°")
+        except ImportError:
+            print("PIL not available - skipping rotation")
+        except Exception as e:
+            print(f"Rotation failed: {e}")
+        
         # Show confirmation on LED display
         try:
             disp.show_text("PHOTO")
