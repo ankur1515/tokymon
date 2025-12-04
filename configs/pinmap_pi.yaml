@@ -28,12 +28,14 @@ ir_right:
 
 motors:
   motor_a:
+    pwm: 12
     in1: 5
     in2: 6
   motor_b:
-    in3: 12
-    in4: 13
-  enable_lines: { ena: "tied_high", enb: "tied_high" }
+    pwm: 13
+    in1: 20
+    in2: 21
+  standby: 22
   motor_power: "external_6v"
 
 audio:
