@@ -1,0 +1,45 @@
+{
+  "timestamp": "20251204_114645",
+  "env": "dev",
+  "hardware_enabled": false,
+  "steps": [
+    {
+      "greeting": true
+    },
+    {
+      "motion": "forward",
+      "duration": 1.0
+    },
+    {
+      "motion": "back",
+      "duration": 1.0
+    },
+    {
+      "motion": "right",
+      "duration": 0.6
+    },
+    {
+      "motion": "left",
+      "duration": 0.6
+    },
+    {
+      "camera": "/Users/ankursharma/Documents/Dev Projects/tokymon/data/photos/hw_test_20251204_114645.jpg"
+    },
+    {
+      "stt_name": "move forward"
+    },
+    {
+      "ultrasonic_cm": 30.0
+    },
+    {
+      "ir": {
+        "left": true,
+        "right": false
+      }
+    },
+    {
+      "integrated_response": "move forward",
+      "hw_enabled": false
+    }
+  ]
+}
