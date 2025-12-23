@@ -126,12 +126,9 @@ def capture_frame_np(context: str = "unknown") -> Optional[object]:  # np.ndarra
             # Grayscale - convert to 3-channel
             img_bgr = np.stack([img_array, img_array, img_array], axis=2)
         
-        # Save or delete based on config
-        if CONFIG.get("vision", {}).get("save_frames", False):
-            img.save(img_path)
-            LOGGER.debug("Saved camera frame: %s", img_path)
-        else:
-            img_path.unlink(missing_ok=True)
+        # Always save frames for debugging (user requested)
+        img.save(img_path)
+        LOGGER.debug("Saved camera frame: %s", img_path)
         
         return img_bgr
         
