@@ -13,12 +13,11 @@ from sessions.modules.base import BaseModule, ModuleResult
 from system.config import CONFIG
 from system.logger import get_logger
 from vision import camera
+from vision import face_detector
 
 LOGGER = get_logger("basic_commands")
 
-# ──────────────────────────────────────────────
-# 🔹 GLOBAL UI STATE (iPhone UI)
-# ──────────────────────────────────────────────
+# Global state for iPhone UI (simple in-memory state)
 _ui_state = {
     "face_mode": "normal",  # normal, greeting, moving, stop
     "last_update": time.time(),
@@ -33,133 +32,233 @@ def _update_ui_face(mode: str) -> None:
         _ui_state["last_update"] = time.time()
 
 
-# ──────────────────────────────────────────────
-# ✅ NEW: WATCHDOG-SAFE SLEEP
-# ──────────────────────────────────────────────
 def _safe_sleep(seconds: float, safety: Optional[SafetyManager]) -> None:
     """
     Sleep while continuously feeding the watchdog.
+    Prevents watchdog timeout during long operations.
     """
     end_time = time.time() + seconds
     while time.time() < end_time:
         if safety:
             safety.heartbeat()
-        time.sleep(0.3)
+        time.sleep(0.25)  # Check every 250ms
 
 
-# ──────────────────────────────────────────────
-# ✅ UPDATED: CAMERA + HEARTBEAT
-# ──────────────────────────────────────────────
-def _capture_face(context: str, safety: Optional[SafetyManager]) -> bool:
+def _detect_face_binary(context: str, safety: Optional[SafetyManager]) -> bool:
     """
-    Capture a frame safely.
-    Returns True if capture succeeded.
+    Binary face detection - returns True if face present, False otherwise.
+    Uses real OpenCV Haar Cascade detection.
     """
+    USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
+    
+    if USE_SIM:
+        # Simulator: randomly return True/False for testing
+        result = random.random() > 0.3  # 70% chance face visible
+        LOGGER.info("Face visible (%s, sim): %s", context, result)
+        return result
+    
+    # Production: real face detection
     try:
+        # Heartbeat before camera capture
         if safety:
             safety.heartbeat()
-
-        camera.capture_frame()
-
+        
+        # Capture frame
+        frame = camera.capture_frame_np(context=context)
+        
+        # Heartbeat after capture
         if safety:
             safety.heartbeat()
-
-        return True
+        
+        # Detect face
+        face_visible = face_detector.face_present(frame, context=context)
+        
+        LOGGER.info("Face visible (%s): %s", context, face_visible)
+        return face_visible
+        
     except Exception as exc:
-        LOGGER.warning("Camera capture failed (%s): %s", context, exc)
+        LOGGER.warning("Face detection error (%s): %s", context, exc)
         return False
 
 
-# ──────────────────────────────────────────────
-# ✅ UPDATED: FACE CHECK (NO BLOCKING)
-# ──────────────────────────────────────────────
-def _detect_face_binary(safety: Optional[SafetyManager], context: str) -> bool:
-    """
-    Binary face detection (POC-safe).
-    """
-    USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
-
-    if USE_SIM:
-        return random.random() > 0.3
-
-    return _capture_face(context=context, safety=safety)
-
-
-# ──────────────────────────────────────────────
-# ✅ UPDATED: LED FACE WITH HEARTBEAT
-# ──────────────────────────────────────────────
-def _show_face_led(
-    mode: str,
-    duration: float,
-    safety: Optional[SafetyManager],
-) -> None:
-    """Show face animation on LED matrix safely."""
+def _show_face_led(mode: str, duration: float = 1.0, safety: Optional[SafetyManager] = None) -> None:
+    """Show face animation on LED matrix with watchdog heartbeats."""
     try:
         from luma.core.render import canvas
         device = max7219_driver.init_display()
         if device is None:
+            LOGGER.debug("LED device not available (simulator)")
             return
-
+        
         start_time = time.time()
         while time.time() - start_time < duration:
             elapsed = time.time() - start_time
             with canvas(device) as draw:
                 expressions.draw_face_frame(draw, device, mode, elapsed)
-
+            
+            # Feed watchdog during LED animation
             if safety:
                 safety.heartbeat()
-
-            time.sleep(0.06)
+            
+            time.sleep(0.06)  # ~16 FPS
+    except ImportError:
+        # luma not available - graceful degradation
+        LOGGER.debug("LED display library not available (simulator/dev mode)")
     except Exception as exc:
         LOGGER.warning("LED face display error: %s", exc)
 
 
-# ──────────────────────────────────────────────
-# ✅ UPDATED: SAFE COMMAND EXECUTION
-# ──────────────────────────────────────────────
 def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None:
+    """
+    Perform a safe robot command.
+    Commands: greeting, forward, backward, turn_left, turn_right, stop
+    """
     LOGGER.info("Command demonstrated: %s", command)
-
-    driver = motors._get_driver() if hasattr(motors, "_get_driver") else motors.MotorDriver()
-
+    
+    # Get singleton motor driver
+    driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
+    
     if command == "greeting":
+        # No movement, just face animation
+        _show_face_led("normal", duration=2.0, safety=safety)
         _update_ui_face("greeting")
-        _show_face_led("normal", 2.0, safety)
         _safe_sleep(2.0, safety)
         return
-
-    _update_ui_face("moving")
-    _show_face_led("normal", 1.5, safety)
-
+    
     if command == "forward":
-        driver.set_motor_speed(50, 50)
+        _update_ui_face("moving")
+        _show_face_led("normal", duration=0.5, safety=safety)
+        driver.set_motor_speed(50, 50)  # Slow speed (50%)
         driver.forward()
-    elif command == "backward":
-        driver.set_motor_speed(50, 50)
-        driver.backward()
-    elif command == "turn_left":
-        driver.turn_left()
-    elif command == "turn_right":
-        driver.turn_right()
-    elif command == "stop":
+        if safety:
+            safety.heartbeat()
+        _safe_sleep(0.6, safety)  # ~5-10cm at slow speed
         driver.brake()
-        _update_ui_face("stop")
-        _safe_sleep(1.0, safety)
         _update_ui_face("normal")
-        return
+        _show_face_led("normal", duration=0.5, safety=safety)
+        if safety:
+            safety.heartbeat()
+    
+    elif command == "backward":
+        _update_ui_face("moving")
+        _show_face_led("normal", duration=0.5, safety=safety)
+        driver.set_motor_speed(50, 50)  # Slow speed (50%)
+        driver.backward()
+        if safety:
+            safety.heartbeat()
+        _safe_sleep(0.6, safety)  # ~5-10cm at slow speed
+        driver.brake()
+        _update_ui_face("normal")
+        _show_face_led("normal", duration=0.5, safety=safety)
+        if safety:
+            safety.heartbeat()
+    
+    elif command == "turn_left":
+        _update_ui_face("moving")
+        _show_face_led("normal", duration=0.4, safety=safety)
+        driver.turn_left()
+        if safety:
+            safety.heartbeat()
+        _safe_sleep(0.6, safety)  # ~10-15 degrees
+        driver.brake()
+        _update_ui_face("normal")
+        _show_face_led("normal", duration=0.5, safety=safety)
+        if safety:
+            safety.heartbeat()
+    
+    elif command == "turn_right":
+        _update_ui_face("moving")
+        _show_face_led("normal", duration=0.4, safety=safety)
+        driver.turn_right()
+        if safety:
+            safety.heartbeat()
+        _safe_sleep(0.6, safety)  # ~10-15 degrees
+        driver.brake()
+        _update_ui_face("normal")
+        _show_face_led("normal", duration=0.5, safety=safety)
+        if safety:
+            safety.heartbeat()
+    
+    elif command == "stop":
+        _update_ui_face("stop")
+        driver.brake()
+        _show_face_led("normal", duration=1.0, safety=safety)
+        _update_ui_face("normal")
+        if safety:
+            safety.heartbeat()
 
-    _safe_sleep(1.0, safety)
+
+def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
+    """
+    Perform reposition sequence: backward → forward → rotate.
+    Returns True if face becomes visible, False otherwise.
+    """
+    driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
+    
+    # Step 1: Move backward
+    LOGGER.info("Reposition step: moving backward")
+    _update_ui_face("moving")
+    driver.set_motor_speed(50, 50)
+    driver.backward()
+    if safety:
+        safety.heartbeat()
+    _safe_sleep(0.6, safety)
     driver.brake()
-
+    if safety:
+        safety.heartbeat()
+    
+    # Check face after backward
+    _safe_sleep(0.5, safety)  # Brief pause before detection
+    if _detect_face_binary("after_backward", safety):
+        LOGGER.info("Face visible after backward: True")
+        _update_ui_face("normal")
+        return True
+    
+    # Step 2: Move forward
+    LOGGER.info("Reposition step: moving forward")
+    _update_ui_face("moving")
+    driver.set_motor_speed(50, 50)
+    driver.forward()
+    if safety:
+        safety.heartbeat()
+    _safe_sleep(0.8, safety)  # Slightly longer forward
+    driver.brake()
+    if safety:
+        safety.heartbeat()
+    
+    # Check face after forward
+    _safe_sleep(0.5, safety)
+    if _detect_face_binary("after_forward", safety):
+        LOGGER.info("Face visible after forward: True")
+        _update_ui_face("normal")
+        return True
+    
+    # Step 3: Rotate (random direction)
+    LOGGER.info("Reposition step: rotating")
+    _update_ui_face("moving")
+    direction = random.choice(["left", "right"])
+    if direction == "left":
+        driver.turn_left()
+    else:
+        driver.turn_right()
+    if safety:
+        safety.heartbeat()
+    _safe_sleep(0.6, safety)
+    driver.brake()
+    if safety:
+        safety.heartbeat()
+    
+    # Check face after rotation
+    _safe_sleep(0.5, safety)
+    face_visible = _detect_face_binary("after_rotate", safety)
+    LOGGER.info("Face visible after rotate: %s", face_visible)
     _update_ui_face("normal")
-    _show_face_led("normal", 1.5, safety)
+    
+    return face_visible
 
 
-# ──────────────────────────────────────────────
-# 🧠 MODULE CLASS
-# ──────────────────────────────────────────────
 class BasicCommandsModule(BaseModule):
-    """Basic Commands Module (watchdog-safe)."""
+    """Module 10: Basic Commands & Robot Interaction - Finalized for POC."""
 
     def __init__(self) -> None:
         super().__init__("basic_commands")
@@ -167,66 +266,98 @@ class BasicCommandsModule(BaseModule):
         self.reposition_attempted = False
 
     def enter(self) -> None:
+        """Initialize basic commands and robot interaction."""
         self.logger.info("Module start: basic_commands")
-
+        self.reposition_attempted = False
+        
+        # Start iPhone UI server
         try:
             from sessions.modules.ui_server import start_ui_server
             start_ui_server(port=8080)
-        except Exception:
-            pass
-
+            self.logger.info("iPhone UI server started on port 8080")
+        except Exception as exc:
+            self.logger.warning("Failed to start UI server: %s", exc)
+        
+        # Get safety manager from orchestrator context if available
+        # For now, create a minimal one
         try:
+            from control.safety import SafetyManager
             self.safety = SafetyManager()
             self.safety.start()
         except Exception:
             self.safety = None
 
     def run(self) -> ModuleResult:
+        """Run basic commands - demonstrates ≤3 commands safely."""
         self._set_running(True)
-
-        commands = random.sample(
-            ["greeting", "forward", "backward", "turn_left", "turn_right", "stop"],
-            3,
-        )
-
-        self.logger.info("Demonstrating commands: %s", commands)
-
-        face_visible = _detect_face_binary(self.safety, "initial")
-
-        if not face_visible:
-            _safe_sleep(3.0, self.safety)
-            face_visible = _detect_face_binary(self.safety, "retry")
-
-        if not face_visible and not self.reposition_attempted:
+        
+        if self._stop_requested:
+            self._set_running(False)
+            return ModuleResult(completed=False, engagement=None)
+        
+        # Available commands (max 3 per session)
+        available_commands = ["greeting", "forward", "backward", "turn_left", "turn_right", "stop"]
+        selected_commands = random.sample(available_commands, min(3, len(available_commands)))
+        
+        self.logger.info("Demonstrating commands: %s", selected_commands)
+        
+        # Initial face observation
+        face_visible_initial = _detect_face_binary("initial", self.safety)
+        
+        # If face not visible, wait and check again
+        if not face_visible_initial:
+            _safe_sleep(2.0, self.safety)
+            face_visible_initial = _detect_face_binary("retry", self.safety)
+        
+        # ONE reposition attempt if face not visible
+        if not face_visible_initial and not self.reposition_attempted:
+            self.logger.info("Reposition attempted: yes")
             self.reposition_attempted = True
-            driver = motors._get_driver()
-            driver.turn_left()
-            _safe_sleep(1.0, self.safety)
-            driver.brake()
-            _safe_sleep(1.0, self.safety)
-
-        for cmd in commands:
+            
+            # Perform full reposition sequence: backward → forward → rotate
+            face_visible_after = _perform_reposition(self.safety)
+            
+            self.logger.info("Face visible (after reposition): %s", face_visible_after)
+        else:
+            self.logger.info("Reposition attempted: no")
+            face_visible_after = face_visible_initial
+        
+        # Demonstrate commands
+        for i, cmd in enumerate(selected_commands):
             if self._stop_requested:
                 break
-
+            
             _perform_safe_command(cmd, self.safety)
+            
+            # Observe for 2 seconds after each command
+            # Send heartbeats during observation
             _safe_sleep(2.0, self.safety)
-            #_detect_face_binary(self.safety, f"after_{cmd}")
-
+            face_during = _detect_face_binary(f"after_{cmd}", self.safety)
+            # Log observation (binary only, no interpretation)
+            self.logger.debug("Face visible after command %s: %s", cmd, face_during)
+        
+        # Final state
+        _update_ui_face("normal")
+        _show_face_led("normal", duration=1.0, safety=self.safety)
+        
+        if self.safety:
+            self.safety.heartbeat()
+        
         self._set_running(False)
         return ModuleResult(completed=True, engagement=None)
 
     def exit(self) -> None:
+        """Cleanup basic commands and robot interaction."""
         self.logger.info("Module end: basic_commands")
-
         try:
-            motors._get_driver().brake()
+            driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
+            driver.brake()
         except Exception:
             pass
-
         if self.safety:
             self.safety.stop()
-
+        
+        # Stop iPhone UI server
         try:
             from sessions.modules.ui_server import stop_ui_server
             stop_ui_server()
