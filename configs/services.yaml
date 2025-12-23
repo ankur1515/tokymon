@@ -16,6 +16,10 @@ mqtt:
   broker: "localhost"
   port: 1883
   topic_prefix: "tokymon"
+sessions:
+  max_modules_per_session: 3
+  # selected_modules: ["object_identification", "environment_orientation", "emotion_affect"]
+  # If selected_modules is not set, uses first max_modules_per_session modules
 tests:
   movement_durations:
     forward: 1.0

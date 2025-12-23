@@ -1,0 +1,15 @@
+[Unit]
+Description=Tokymon Session Orchestrator Service
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/ankursharma/Projects/tokymon
+ExecStart=/home/ankursharma/Projects/tokymon/scripts/run_session.sh
+EnvironmentFile=/home/ankursharma/Projects/tokymon/.env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
