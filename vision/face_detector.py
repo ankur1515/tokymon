@@ -139,19 +139,47 @@ def face_present(frame: Optional[object], context: str = "unknown") -> bool:  # 
         else:
             gray = frame
         
-        # Detect faces
+        # Detect faces with stricter parameters to reduce false positives
         faces = detector.detectMultiScale(
             gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30),
+            scaleFactor=1.2,  # Increased from 1.1 - less aggressive scaling = fewer false positives
+            minNeighbors=8,   # Increased from 5 - requires more neighbor detections = stricter
+            minSize=(50, 50),  # Increased from 30x30 - filters out very small detections
+            maxSize=(300, 300),  # Added - filters out very large detections (likely false positives)
             flags=cv2.CASCADE_SCALE_IMAGE
         )
         
-        # Binary result: face present or not
-        face_visible = len(faces) > 0
+        # Additional validation: filter faces by aspect ratio and size
+        # Real faces typically have aspect ratio around 0.7-1.0 (width/height)
+        valid_faces = []
+        for (x, y, w, h) in faces:
+            aspect_ratio = w / h if h > 0 else 0
+            face_area = w * h
+            image_area = gray.shape[0] * gray.shape[1]
+            area_ratio = face_area / image_area if image_area > 0 else 0
+            
+            # Validate: reasonable aspect ratio (0.6-1.2) and reasonable size (0.5%-15% of image)
+            if 0.6 <= aspect_ratio <= 1.2 and 0.005 <= area_ratio <= 0.15:
+                valid_faces.append((x, y, w, h))
+            else:
+                LOGGER.debug(
+                    "Face detection (%s): filtered invalid detection - aspect=%.2f, area_ratio=%.3f",
+                    context, aspect_ratio, area_ratio
+                )
         
-        LOGGER.debug("Face detection (%s): %s (found %d faces)", context, face_visible, len(faces))
+        # Binary result: face present or not (only count validated faces)
+        face_visible = len(valid_faces) > 0
+        
+        if face_visible:
+            LOGGER.info(
+                "Face detection (%s): True (found %d valid faces out of %d detections)",
+                context, len(valid_faces), len(faces)
+            )
+        else:
+            LOGGER.debug(
+                "Face detection (%s): False (found %d detections, %d valid)",
+                context, len(faces), len(valid_faces)
+            )
         
         return face_visible
         
