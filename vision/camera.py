@@ -132,7 +132,8 @@ def capture_frame_np(context: str = "unknown") -> Optional[object]:  # np.ndarra
         
         # Always save frames for debugging (user requested)
         img.save(img_path)
-        LOGGER.debug("Saved camera frame: %s", img_path)
+        LOGGER.info("Saved camera frame: %s", img_path)
+        LOGGER.info("Camera frame absolute path: %s", img_path.resolve())
         
         return img_bgr
         

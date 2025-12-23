@@ -36,13 +36,19 @@ def _safe_sleep(seconds: float, safety: Optional[SafetyManager]) -> None:
     """
     Sleep while continuously feeding the watchdog.
     Prevents watchdog timeout during long operations.
-    Sends heartbeats every 0.1s to ensure watchdog never times out (timeout is 2s).
+    Sends heartbeats every 0.05s to ensure watchdog never times out (timeout is 2s).
     """
+    if seconds <= 0:
+        return
+    
     end_time = time.time() + seconds
     while time.time() < end_time:
         if safety:
             safety.heartbeat()
-        time.sleep(0.1)  # Check every 100ms (10 heartbeats per second)
+        # Sleep in smaller chunks to ensure frequent heartbeats
+        sleep_time = min(0.05, end_time - time.time())  # Max 50ms, or remaining time
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 
 
 def _detect_face_binary(context: str, safety: Optional[SafetyManager]) -> bool:
@@ -111,11 +117,11 @@ def _capture_frame_with_heartbeat(context: str, safety: Optional[SafetyManager])
     capture_thread.start()
     
     # Send heartbeats while waiting for capture to complete
-    capture_thread.join(timeout=0.1)  # Check every 100ms
+    # Check every 50ms and send heartbeat to ensure watchdog is fed
     while capture_thread.is_alive():
         if safety:
             safety.heartbeat()
-        capture_thread.join(timeout=0.1)
+        capture_thread.join(timeout=0.05)  # Check every 50ms
     
     # Final heartbeat
     if safety:
@@ -148,10 +154,10 @@ def _show_face_led(mode: str, duration: float = 1.0, safety: Optional[SafetyMana
                 expressions.draw_face_frame(draw, device, mode, elapsed)
             
             frame_count += 1
-            # Send heartbeat at least every 0.5s (well within 2s timeout)
-            # Send every 10 frames (~0.6s) to avoid overhead
+            # Send heartbeat at least every 0.3s (well within 2s timeout)
+            # More frequent heartbeats to prevent watchdog timeouts
             current_time = time.time()
-            if safety and (current_time - last_heartbeat >= 0.5 or frame_count % 10 == 0):
+            if safety and (current_time - last_heartbeat >= 0.3 or frame_count % 5 == 0):
                 safety.heartbeat()
                 last_heartbeat = current_time
             
@@ -189,53 +195,69 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
     
     if command == "forward":
         _update_ui_face("moving")
-        _show_face_led("normal", duration=0.3, safety=safety)
+        _show_face_led("normal", duration=0.2, safety=safety)
+        if safety:
+            safety.heartbeat()
         driver.set_motor_speed(50, 50)  # Slow speed (50%)
         driver.forward()
+        if safety:
+            safety.heartbeat()
         # Send heartbeats continuously during movement
         _safe_sleep(0.6, safety)  # ~5-10cm at slow speed
         driver.brake()
         if safety:
             safety.heartbeat()
         _update_ui_face("normal")
-        _show_face_led("normal", duration=0.3, safety=safety)
+        _show_face_led("normal", duration=0.2, safety=safety)
     
     elif command == "backward":
         _update_ui_face("moving")
-        _show_face_led("normal", duration=0.3, safety=safety)
+        _show_face_led("normal", duration=0.2, safety=safety)
+        if safety:
+            safety.heartbeat()
         driver.set_motor_speed(50, 50)  # Slow speed (50%)
         driver.backward()
+        if safety:
+            safety.heartbeat()
         # Send heartbeats continuously during movement
         _safe_sleep(0.6, safety)  # ~5-10cm at slow speed
         driver.brake()
         if safety:
             safety.heartbeat()
         _update_ui_face("normal")
-        _show_face_led("normal", duration=0.3, safety=safety)
+        _show_face_led("normal", duration=0.2, safety=safety)
     
     elif command == "turn_left":
         _update_ui_face("moving")
-        _show_face_led("normal", duration=0.2, safety=safety)
+        _show_face_led("normal", duration=0.15, safety=safety)
+        if safety:
+            safety.heartbeat()
         driver.turn_left()
+        if safety:
+            safety.heartbeat()
         # Send heartbeats continuously during movement
         _safe_sleep(0.6, safety)  # ~10-15 degrees
         driver.brake()
         if safety:
             safety.heartbeat()
         _update_ui_face("normal")
-        _show_face_led("normal", duration=0.3, safety=safety)
+        _show_face_led("normal", duration=0.2, safety=safety)
     
     elif command == "turn_right":
         _update_ui_face("moving")
-        _show_face_led("normal", duration=0.2, safety=safety)
+        _show_face_led("normal", duration=0.15, safety=safety)
+        if safety:
+            safety.heartbeat()
         driver.turn_right()
+        if safety:
+            safety.heartbeat()
         # Send heartbeats continuously during movement
         _safe_sleep(0.6, safety)  # ~10-15 degrees
         driver.brake()
         if safety:
             safety.heartbeat()
         _update_ui_face("normal")
-        _show_face_led("normal", duration=0.3, safety=safety)
+        _show_face_led("normal", duration=0.2, safety=safety)
     
     elif command == "stop":
         _update_ui_face("stop")
@@ -396,7 +418,11 @@ class BasicCommandsModule(BaseModule):
             
             # Observe for 2 seconds after each command
             # Send heartbeats during observation (safe_sleep handles this)
+            if self.safety:
+                self.safety.heartbeat()
             _safe_sleep(2.0, self.safety)
+            if self.safety:
+                self.safety.heartbeat()
             face_during = _detect_face_binary(f"after_{cmd}", self.safety)
             # Log observation (binary only, no interpretation)
             self.logger.debug("Face visible after command %s: %s", cmd, face_during)
