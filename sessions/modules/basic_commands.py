@@ -36,12 +36,13 @@ def _safe_sleep(seconds: float, safety: Optional[SafetyManager]) -> None:
     """
     Sleep while continuously feeding the watchdog.
     Prevents watchdog timeout during long operations.
+    Sends heartbeats every 0.1s to ensure watchdog never times out (timeout is 2s).
     """
     end_time = time.time() + seconds
     while time.time() < end_time:
         if safety:
             safety.heartbeat()
-        time.sleep(0.25)  # Check every 250ms
+        time.sleep(0.1)  # Check every 100ms (10 heartbeats per second)
 
 
 def _detect_face_binary(context: str, safety: Optional[SafetyManager]) -> bool:
@@ -63,8 +64,9 @@ def _detect_face_binary(context: str, safety: Optional[SafetyManager]) -> bool:
         if safety:
             safety.heartbeat()
         
-        # Capture frame
-        frame = camera.capture_frame_np(context=context)
+        # Capture frame with periodic heartbeats during capture
+        # Camera capture can take up to 5 seconds, so we need to send heartbeats
+        frame = _capture_frame_with_heartbeat(context, safety)
         
         if frame is None:
             LOGGER.warning("Camera capture returned None (dependencies missing?)")
@@ -74,8 +76,10 @@ def _detect_face_binary(context: str, safety: Optional[SafetyManager]) -> bool:
         if safety:
             safety.heartbeat()
         
-        # Detect face
+        # Detect face (should be fast, but send heartbeat just in case)
         face_visible = face_detector.face_present(frame, context=context)
+        if safety:
+            safety.heartbeat()
         
         LOGGER.info("Face visible (%s): %s", context, face_visible)
         return face_visible
@@ -83,6 +87,44 @@ def _detect_face_binary(context: str, safety: Optional[SafetyManager]) -> bool:
     except Exception as exc:
         LOGGER.warning("Face detection error (%s): %s", context, exc)
         return False
+
+
+def _capture_frame_with_heartbeat(context: str, safety: Optional[SafetyManager]) -> Optional[object]:
+    """
+    Capture frame while sending heartbeats during the blocking operation.
+    Uses threading to monitor camera capture and send heartbeats.
+    """
+    import threading
+    
+    frame_result = [None]
+    capture_error = [None]
+    
+    def capture_worker():
+        """Worker thread to capture frame."""
+        try:
+            frame_result[0] = camera.capture_frame_np(context=context)
+        except Exception as exc:
+            capture_error[0] = exc
+    
+    # Start capture in thread
+    capture_thread = threading.Thread(target=capture_worker, daemon=True)
+    capture_thread.start()
+    
+    # Send heartbeats while waiting for capture to complete
+    capture_thread.join(timeout=0.1)  # Check every 100ms
+    while capture_thread.is_alive():
+        if safety:
+            safety.heartbeat()
+        capture_thread.join(timeout=0.1)
+    
+    # Final heartbeat
+    if safety:
+        safety.heartbeat()
+    
+    if capture_error[0]:
+        raise capture_error[0]
+    
+    return frame_result[0]
 
 
 def _show_face_led(mode: str, duration: float = 1.0, safety: Optional[SafetyManager] = None) -> None:
@@ -95,21 +137,30 @@ def _show_face_led(mode: str, duration: float = 1.0, safety: Optional[SafetyMana
             return
         
         start_time = time.time()
+        frame_count = 0
         while time.time() - start_time < duration:
             elapsed = time.time() - start_time
             with canvas(device) as draw:
                 expressions.draw_face_frame(draw, device, mode, elapsed)
             
-            # Feed watchdog during LED animation
-            if safety:
+            frame_count += 1
+            # Send heartbeat every 10 frames (~0.6s) to ensure watchdog is fed
+            # Also send heartbeat if duration is long (>1s)
+            if safety and (frame_count % 10 == 0 or duration > 1.0):
                 safety.heartbeat()
             
             time.sleep(0.06)  # ~16 FPS
     except ImportError:
         # luma not available - graceful degradation
         LOGGER.debug("LED display library not available (simulator/dev mode)")
+        # Still send heartbeats during LED duration even if LED unavailable
+        if safety:
+            _safe_sleep(duration, safety)
     except Exception as exc:
         LOGGER.warning("LED face display error: %s", exc)
+        # Fallback: use safe_sleep if LED fails
+        if safety:
+            _safe_sleep(duration, safety)
 
 
 def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None:
