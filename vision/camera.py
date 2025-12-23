@@ -5,8 +5,20 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
-from PIL import Image
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None  # type: ignore
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = None  # type: ignore
+
 import subprocess
 
 from system.logger import get_logger
@@ -20,8 +32,12 @@ FRAME_DIR.mkdir(parents=True, exist_ok=True)
 USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 
 
-def capture_frame(context: str = "unknown") -> Image.Image:
+def capture_frame(context: str = "unknown") -> Optional[object]:  # Image.Image when available
     """Capture frame and return PIL Image (legacy interface)."""
+    if not PIL_AVAILABLE or Image is None:
+        LOGGER.warning("PIL/Pillow not available - camera capture disabled")
+        return None
+    
     ts = int(time.time() * 1000)
     safe_context = context.replace(" ", "_").lower()
     img_path = FRAME_DIR / f"frame_{ts}_{safe_context}.jpg"
@@ -57,13 +73,17 @@ def capture_frame(context: str = "unknown") -> Image.Image:
     return img
 
 
-def capture_frame_np(context: str = "unknown") -> np.ndarray:
+def capture_frame_np(context: str = "unknown") -> Optional[object]:  # np.ndarray when available
     """
     Capture frame and return as OpenCV-compatible numpy array.
     
     Returns:
-        np.ndarray: BGR image array (shape: height, width, 3)
+        np.ndarray: BGR image array (shape: height, width, 3) or None if dependencies missing
     """
+    if not NUMPY_AVAILABLE or np is None:
+        LOGGER.warning("NumPy not available - camera capture disabled")
+        return None
+    
     if USE_SIM:
         LOGGER.debug("Camera capture (simulator): returning blank array")
         return np.zeros((480, 640, 3), dtype=np.uint8)
@@ -117,10 +137,16 @@ def capture_frame_np(context: str = "unknown") -> np.ndarray:
         
     except subprocess.TimeoutExpired:
         LOGGER.warning("Camera capture timeout")
-        return np.zeros((480, 640, 3), dtype=np.uint8)
+        if np is not None:
+            return np.zeros((480, 640, 3), dtype=np.uint8)
+        return None
     except FileNotFoundError:
         LOGGER.warning("rpicam-still not found (simulator mode?)")
-        return np.zeros((480, 640, 3), dtype=np.uint8)
+        if np is not None:
+            return np.zeros((480, 640, 3), dtype=np.uint8)
+        return None
     except Exception as exc:
         LOGGER.warning("Camera capture error: %s", exc)
-        return np.zeros((480, 640, 3), dtype=np.uint8)
+        if np is not None:
+            return np.zeros((480, 640, 3), dtype=np.uint8)
+        return None

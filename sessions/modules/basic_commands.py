@@ -66,6 +66,10 @@ def _detect_face_binary(context: str, safety: Optional[SafetyManager]) -> bool:
         # Capture frame
         frame = camera.capture_frame_np(context=context)
         
+        if frame is None:
+            LOGGER.warning("Camera capture returned None (dependencies missing?)")
+            return False
+        
         # Heartbeat after capture
         if safety:
             safety.heartbeat()
