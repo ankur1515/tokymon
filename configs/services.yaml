@@ -27,3 +27,5 @@ tests:
     turn: 0.6
   ultrasonic_min_safe_cm: 15
   stt_timeout_s: 4
+vision:
+  save_frames: true   # set to false later to disable everywhere
