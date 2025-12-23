@@ -291,6 +291,12 @@ class SessionOrchestrator:
 
         # Enter module
         try:
+            # Pass SafetyManager to module if it has a method to set it
+            if self.safety_manager and hasattr(self.current_module, 'set_safety_manager'):
+                self.current_module.set_safety_manager(self.safety_manager)
+            elif self.safety_manager and hasattr(self.current_module, 'safety'):
+                self.current_module.safety = self.safety_manager
+            
             self.current_module.enter()
             self.module_start_time = time.time()
 

@@ -26,8 +26,12 @@ from system.config import CONFIG
 
 LOGGER = get_logger("camera")
 
-FRAME_DIR = Path("data/camera_frames")
+# Use absolute path for camera frames (relative to project root)
+# Try to find project root by looking for common markers
+_project_root = Path(__file__).resolve().parent.parent
+FRAME_DIR = _project_root / "data" / "camera_frames"
 FRAME_DIR.mkdir(parents=True, exist_ok=True)
+LOGGER.info("Camera frames directory: %s", FRAME_DIR)
 
 USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 

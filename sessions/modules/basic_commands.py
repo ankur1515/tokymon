@@ -141,19 +141,22 @@ def _show_face_led(mode: str, duration: float = 1.0, safety: Optional[SafetyMana
         
         start_time = time.time()
         frame_count = 0
+        last_heartbeat = time.time()
         while time.time() - start_time < duration:
             elapsed = time.time() - start_time
             with canvas(device) as draw:
                 expressions.draw_face_frame(draw, device, mode, elapsed)
             
             frame_count += 1
-            # Send heartbeat EVERY frame to ensure watchdog is always fed
-            # Watchdog timeout is 2s, so we need heartbeats at least every 1.5s
-            if safety:
+            # Send heartbeat at least every 0.5s (well within 2s timeout)
+            # Send every 10 frames (~0.6s) to avoid overhead
+            current_time = time.time()
+            if safety and (current_time - last_heartbeat >= 0.5 or frame_count % 10 == 0):
                 safety.heartbeat()
+                last_heartbeat = current_time
             
-            # Use safe_sleep for the frame delay to ensure heartbeats
-            _safe_sleep(0.06, safety)  # ~16 FPS with heartbeats
+            # Use regular sleep for frame delay (we're already heartbeating)
+            time.sleep(0.06)  # ~16 FPS
     except ImportError:
         # luma not available - graceful degradation
         LOGGER.debug("LED display library not available (simulator/dev mode)")
@@ -319,6 +322,10 @@ class BasicCommandsModule(BaseModule):
         super().__init__("basic_commands")
         self.safety: Optional[SafetyManager] = None
         self.reposition_attempted = False
+    
+    def set_safety_manager(self, safety_manager: SafetyManager) -> None:
+        """Set the SafetyManager instance from orchestrator."""
+        self.safety = safety_manager
 
     def enter(self) -> None:
         """Initialize basic commands and robot interaction."""
@@ -333,14 +340,16 @@ class BasicCommandsModule(BaseModule):
         except Exception as exc:
             self.logger.warning("Failed to start UI server: %s", exc)
         
-        # Get safety manager from orchestrator context if available
-        # For now, create a minimal one
-        try:
-            from control.safety import SafetyManager
-            self.safety = SafetyManager()
-            self.safety.start()
-        except Exception:
-            self.safety = None
+        # Safety manager should be set by orchestrator before enter() is called
+        # If not set, create a fallback (shouldn't happen in normal flow)
+        if self.safety is None:
+            self.logger.warning("SafetyManager not provided by orchestrator, creating fallback")
+            try:
+                from control.safety import SafetyManager
+                self.safety = SafetyManager()
+                self.safety.start()
+            except Exception:
+                self.safety = None
 
     def run(self) -> ModuleResult:
         """Run basic commands - demonstrates ≤3 commands safely."""
