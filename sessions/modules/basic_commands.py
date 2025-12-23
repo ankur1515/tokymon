@@ -96,62 +96,62 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
     
     if command == "forward":
         _update_ui_face("moving")
-        _show_face_led("normal", duration=0.5)
+        _show_face_led("normal", duration=2.0)
         driver.set_motor_speed(50, 50)  # Slow speed (50%)
         driver.forward()
         if safety:
             safety.heartbeat()
-        time.sleep(0.3)  # ~5-10cm at slow speed
+        time.sleep(1.0)  # ~5-10cm at slow speed
         driver.brake()
         _update_ui_face("normal")
-        _show_face_led("normal", duration=0.5)
+        _show_face_led("normal", duration=2.0)
         if safety:
             safety.heartbeat()
     
     elif command == "backward":
         _update_ui_face("moving")
-        _show_face_led("normal", duration=0.5)
+        _show_face_led("normal", duration=2.0)
         driver.set_motor_speed(50, 50)  # Slow speed (50%)
         driver.backward()
         if safety:
             safety.heartbeat()
-        time.sleep(0.3)  # ~5-10cm at slow speed
+        time.sleep(1.0)  # ~5-10cm at slow speed
         driver.brake()
         _update_ui_face("normal")
-        _show_face_led("normal", duration=0.5)
+        _show_face_led("normal", duration=2.0)
         if safety:
             safety.heartbeat()
     
     elif command == "turn_left":
         _update_ui_face("moving")
-        _show_face_led("normal", duration=0.4)
+        _show_face_led("normal", duration=2.0)
         driver.turn_left()
         if safety:
             safety.heartbeat()
-        time.sleep(0.4)  # ~10-15 degrees
+        time.sleep(1.0)  # ~10-15 degrees
         driver.brake()
         _update_ui_face("normal")
-        _show_face_led("normal", duration=0.5)
+        _show_face_led("normal", duration=2.0)
         if safety:
             safety.heartbeat()
     
     elif command == "turn_right":
         _update_ui_face("moving")
-        _show_face_led("normal", duration=0.4)
+        _show_face_led("normal", duration=2.0)
         driver.turn_right()
         if safety:
             safety.heartbeat()
-        time.sleep(0.4)  # ~10-15 degrees
+        time.sleep(1.0)  # ~10-15 degrees
         driver.brake()
         _update_ui_face("normal")
-        _show_face_led("normal", duration=0.5)
-        if safety:
+        _show_face_led("normal", duration=2.0)
+        if safety:  
             safety.heartbeat()
     
     elif command == "stop":
         _update_ui_face("stop")
         driver.brake()
-        _show_face_led("normal", duration=1.0)
+        _show_face_led("normal", duration=2.0)
         _update_ui_face("normal")
         if safety:
             safety.heartbeat()
@@ -207,7 +207,7 @@ class BasicCommandsModule(BaseModule):
         
         # If face not visible, wait 2 seconds and check again
         if not face_visible_initial:
-            time.sleep(2.0)
+            time.sleep(4.0)
             face_visible_initial = _detect_face_binary()
         
         # ONE reposition attempt if face not visible
@@ -225,14 +225,14 @@ class BasicCommandsModule(BaseModule):
                 driver.turn_right()
             if self.safety:
                 self.safety.heartbeat()
-            time.sleep(0.4)  # ~10-15 degrees
+            time.sleep(1.0)  # ~10-15 degrees
             driver.brake()
             _update_ui_face("normal")
             if self.safety:
                 self.safety.heartbeat()
             
             # Check again after reposition
-            time.sleep(0.5)
+            time.sleep(1.0)
             face_visible_after = _detect_face_binary()
             self.logger.info("Face visible (after reposition): %s", face_visible_after)
         else:
@@ -248,7 +248,7 @@ class BasicCommandsModule(BaseModule):
             
             # Observe for 2 seconds after each command
             # Send heartbeats during observation
-            for _ in range(4):  # 4 heartbeats over 2 seconds
+            for _ in range(6):  # 4 heartbeats over 2 seconds
                 if self.safety:
                     self.safety.heartbeat()
                 time.sleep(0.5)
@@ -258,7 +258,7 @@ class BasicCommandsModule(BaseModule):
         
         # Final state
         _update_ui_face("normal")
-        _show_face_led("normal", duration=1.0)
+        _show_face_led("normal", duration=2.0)
         
         if self.safety:
             self.safety.heartbeat()
