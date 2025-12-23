@@ -211,7 +211,7 @@ class BasicCommandsModule(BaseModule):
 
             _perform_safe_command(cmd, self.safety)
             _safe_sleep(2.0, self.safety)
-            _detect_face_binary(self.safety, f"after_{cmd}")
+            #_detect_face_binary(self.safety, f"after_{cmd}")
 
         self._set_running(False)
         return ModuleResult(completed=True, engagement=None)

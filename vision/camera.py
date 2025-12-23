@@ -27,7 +27,8 @@ def capture_frame(context: str = "unknown") -> Image.Image:
             "rpicam-still",
             "-n",
             "--zsl",
-            "-t", "1",
+            #"-t", "1",
+            "--timeout", "200",
             "--rotation", "180",
             "--width", "640",
             "--height", "480",
@@ -38,7 +39,8 @@ def capture_frame(context: str = "unknown") -> Image.Image:
 
     img = Image.open(img_path)
 
-    if CONFIG["vision"].get("save_frames", False):
+    #if CONFIG["vision"].get("save_frames", False):
+    if CONFIG.get("vision", {}).get("save_frames", False):
         img.save(img_path)
         LOGGER.info("Saved camera frame: %s", img_path)
     else:
