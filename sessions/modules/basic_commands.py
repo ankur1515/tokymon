@@ -250,19 +250,23 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         # Continuous distance monitoring with ultrasonic brake
         ultrasonic_reader = get_ultrasonic_reader()
         start_time = time.time()
+        last_ultrasonic_time = 0
         while time.time() - start_time < 5.0:
             if safety:
                 safety.heartbeat()
             
-            # Check distance
-            distance = ultrasonic_reader()
-            if distance > 0 and distance < 10:  # Valid reading and too close
-                LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
-                driver.brake()
-                break
+            # Check distance (HC-SR04 needs ~60ms between readings)
+            current_time = time.time()
+            if current_time - last_ultrasonic_time >= 0.06:  # Minimum 60ms between readings
+                distance = ultrasonic_reader()
+                last_ultrasonic_time = current_time
+                if distance > 0 and distance < 10:  # Valid reading and too close
+                    LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
+                    driver.brake()
+                    break
             
             # Sleep in small chunks to allow frequent checks
-            _safe_sleep(0.1, safety)
+            _safe_sleep(0.05, safety)  # Reduced to 50ms for more responsive checks
         else:
             # Normal completion after 5 seconds
             driver.brake()
@@ -287,19 +291,23 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         # Continuous distance monitoring with ultrasonic brake
         ultrasonic_reader = get_ultrasonic_reader()
         start_time = time.time()
+        last_ultrasonic_time = 0
         while time.time() - start_time < 5.0:
             if safety:
                 safety.heartbeat()
             
-            # Check distance
-            distance = ultrasonic_reader()
-            if distance > 0 and distance < 10:  # Valid reading and too close
-                LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
-                driver.brake()
-                break
+            # Check distance (HC-SR04 needs ~60ms between readings)
+            current_time = time.time()
+            if current_time - last_ultrasonic_time >= 0.06:  # Minimum 60ms between readings
+                distance = ultrasonic_reader()
+                last_ultrasonic_time = current_time
+                if distance > 0 and distance < 10:  # Valid reading and too close
+                    LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
+                    driver.brake()
+                    break
             
             # Sleep in small chunks to allow frequent checks
-            _safe_sleep(0.1, safety)
+            _safe_sleep(0.05, safety)  # Reduced to 50ms for more responsive checks
         else:
             # Normal completion after 5 seconds
             driver.brake()
@@ -382,15 +390,20 @@ def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
         safety.heartbeat()
     # Continuous distance monitoring with ultrasonic brake
     start_time = time.time()
+    last_ultrasonic_time = 0
     while time.time() - start_time < 0.6:
         if safety:
             safety.heartbeat()
-        distance = ultrasonic_reader()
-        if distance > 0 and distance < 10:
-            LOGGER.warning("Ultrasonic brake triggered during reposition backward: distance=%.1f cm", distance)
-            driver.brake()
-            break
-        _safe_sleep(0.1, safety)
+        # Check distance (HC-SR04 needs ~60ms between readings)
+        current_time = time.time()
+        if current_time - last_ultrasonic_time >= 0.06:
+            distance = ultrasonic_reader()
+            last_ultrasonic_time = current_time
+            if distance > 0 and distance < 10:
+                LOGGER.warning("Ultrasonic brake triggered during reposition backward: distance=%.1f cm", distance)
+                driver.brake()
+                break
+        _safe_sleep(0.05, safety)
     else:
         driver.brake()
     if safety:
@@ -412,15 +425,20 @@ def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
         safety.heartbeat()
     # Continuous distance monitoring with ultrasonic brake
     start_time = time.time()
+    last_ultrasonic_time = 0
     while time.time() - start_time < 0.8:
         if safety:
             safety.heartbeat()
-        distance = ultrasonic_reader()
-        if distance > 0 and distance < 10:
-            LOGGER.warning("Ultrasonic brake triggered during reposition forward: distance=%.1f cm", distance)
-            driver.brake()
-            break
-        _safe_sleep(0.1, safety)
+        # Check distance (HC-SR04 needs ~60ms between readings)
+        current_time = time.time()
+        if current_time - last_ultrasonic_time >= 0.06:
+            distance = ultrasonic_reader()
+            last_ultrasonic_time = current_time
+            if distance > 0 and distance < 10:
+                LOGGER.warning("Ultrasonic brake triggered during reposition forward: distance=%.1f cm", distance)
+                driver.brake()
+                break
+        _safe_sleep(0.05, safety)
     else:
         driver.brake()
     if safety:
