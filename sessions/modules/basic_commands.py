@@ -515,19 +515,31 @@ class BasicCommandsModule(BaseModule):
         _play_prompt("bc_02_session_intro.wav", self.safety)
 
     def run(self) -> ModuleResult:
-        """Run basic commands - demonstrates ≤3 commands safely."""
+        """Run basic commands - always starts with greeting, then 2 other commands, then face detection."""
         self._set_running(True)
         
         if self._stop_requested:
             self._set_running(False)
             return ModuleResult(completed=False, engagement=None)
         
-        # Available commands (max 3 per session)
-        available_commands = ["greeting", "forward", "backward", "turn_left", "turn_right", "stop"]
-        selected_commands = random.sample(available_commands, min(3, len(available_commands)))
+        # Step 1: Always start with greeting command
+        self.logger.info("Demonstrating commands: greeting (always first)")
+        _perform_safe_command("greeting", self.safety)
         
-        self.logger.info("Demonstrating commands: %s", selected_commands)
+        # Step 2: Select 2 other commands (excluding greeting)
+        available_commands = ["forward", "backward", "turn_left", "turn_right", "stop"]
+        selected_commands = random.sample(available_commands, min(2, len(available_commands)))
         
+        self.logger.info("Demonstrating additional commands: %s", selected_commands)
+        
+        # Step 3: Demonstrate the 2 other commands
+        for i, cmd in enumerate(selected_commands):
+            if self._stop_requested:
+                break
+            
+            _perform_safe_command(cmd, self.safety)
+        
+        # Step 4: Face detection logic after all commands
         # Initial face observation
         face_visible_initial = _detect_face_binary("initial", self.safety)
         
@@ -558,25 +570,18 @@ class BasicCommandsModule(BaseModule):
             self.logger.info("Reposition attempted: no")
             face_visible_after = face_visible_initial
         
-        # Demonstrate commands
-        for i, cmd in enumerate(selected_commands):
-            if self._stop_requested:
-                break
-            
-            _perform_safe_command(cmd, self.safety)
-            
-            # Observe for 2 seconds after each command
-            # Play observation waiting prompt
-            _play_prompt("bc_11_observe_waiting.wav", self.safety)
-            # Send heartbeats during observation (safe_sleep handles this)
-            if self.safety:
-                self.safety.heartbeat()
-            _safe_sleep(2.0, self.safety)
-            if self.safety:
-                self.safety.heartbeat()
-            face_during = _detect_face_binary(f"after_{cmd}", self.safety)
-            # Log observation (binary only, no interpretation)
-            self.logger.debug("Face visible after command %s: %s", cmd, face_during)
+        # Observe for 2 seconds after face detection/reposition
+        # Play observation waiting prompt
+        _play_prompt("bc_11_observe_waiting.wav", self.safety)
+        # Send heartbeats during observation (safe_sleep handles this)
+        if self.safety:
+            self.safety.heartbeat()
+        _safe_sleep(2.0, self.safety)
+        if self.safety:
+            self.safety.heartbeat()
+        face_during = _detect_face_binary("after_all_commands", self.safety)
+        # Log observation (binary only, no interpretation)
+        self.logger.debug("Face visible after all commands: %s", face_during)
         
         # Play session closing prompt
         _play_prompt("bc_14_session_closing.wav", self.safety)
