@@ -228,7 +228,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
     driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
     
     if command == "greeting":
-        # Play greeting prompt
+        # Play greeting prompt (first prompt)
         _play_prompt("bc_01_greeting_hello.wav", safety)
         # No movement, just face animation
         _update_ui_face("greeting")
@@ -243,15 +243,14 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         _show_face_led("normal", duration=0.2, safety=safety)
         if safety:
             safety.heartbeat()
-        driver.set_motor_speed(50, 50)  # Slow speed (50%)
-        driver.forward()
+        driver.forward(speed=100)  # Full speed (100%)
         if safety:
             safety.heartbeat()
         # Continuous distance monitoring with ultrasonic brake
         ultrasonic_reader = get_ultrasonic_reader()
         start_time = time.time()
         last_ultrasonic_time = 0
-        while time.time() - start_time < 5.0:
+        while time.time() - start_time < 3.0:  # 3 seconds duration
             if safety:
                 safety.heartbeat()
             
@@ -260,7 +259,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
             if current_time - last_ultrasonic_time >= 0.06:  # Minimum 60ms between readings
                 distance = ultrasonic_reader()
                 last_ultrasonic_time = current_time
-                if distance > 0 and distance < 10:  # Valid reading and too close
+                if distance > 0 and distance < 20:  # Valid reading and too close
                     LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
                     driver.brake()
                     break
@@ -268,7 +267,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
             # Sleep in small chunks to allow frequent checks
             _safe_sleep(0.05, safety)  # Reduced to 50ms for more responsive checks
         else:
-            # Normal completion after 5 seconds
+            # Normal completion after 3 seconds
             driver.brake()
         if safety:
             safety.heartbeat()
@@ -284,15 +283,14 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         _show_face_led("normal", duration=0.2, safety=safety)
         if safety:
             safety.heartbeat()
-        driver.set_motor_speed(50, 50)  # Slow speed (50%)
-        driver.backward()
+        driver.backward(speed=100)  # Full speed (100%)
         if safety:
             safety.heartbeat()
         # Continuous distance monitoring with ultrasonic brake
         ultrasonic_reader = get_ultrasonic_reader()
         start_time = time.time()
         last_ultrasonic_time = 0
-        while time.time() - start_time < 5.0:
+        while time.time() - start_time < 3.0:  # 3 seconds duration
             if safety:
                 safety.heartbeat()
             
@@ -301,7 +299,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
             if current_time - last_ultrasonic_time >= 0.06:  # Minimum 60ms between readings
                 distance = ultrasonic_reader()
                 last_ultrasonic_time = current_time
-                if distance > 0 and distance < 10:  # Valid reading and too close
+                if distance > 0 and distance < 20:  # Valid reading and too close
                     LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
                     driver.brake()
                     break
@@ -309,7 +307,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
             # Sleep in small chunks to allow frequent checks
             _safe_sleep(0.05, safety)  # Reduced to 50ms for more responsive checks
         else:
-            # Normal completion after 5 seconds
+            # Normal completion after 3 seconds
             driver.brake()
         if safety:
             safety.heartbeat()
@@ -325,11 +323,14 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         _show_face_led("normal", duration=0.15, safety=safety)
         if safety:
             safety.heartbeat()
-        driver.turn_left()
+        # Set direction for turn left, then override speed to 100%
+        driver.set_direction('A', 'backward')
+        driver.set_direction('B', 'forward')
+        driver.set_motor_speed(100, 100)  # Full speed (100%)
         if safety:
             safety.heartbeat()
         # Send heartbeats continuously during movement
-        _safe_sleep(5.0, safety)  # 5 seconds
+        _safe_sleep(3.0, safety)  # 3 seconds
         driver.brake()
         if safety:
             safety.heartbeat()
@@ -345,11 +346,14 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         _show_face_led("normal", duration=0.15, safety=safety)
         if safety:
             safety.heartbeat()
-        driver.turn_right()
+        # Set direction for turn right, then override speed to 100%
+        driver.set_direction('A', 'forward')
+        driver.set_direction('B', 'backward')
+        driver.set_motor_speed(100, 100)  # Full speed (100%)
         if safety:
             safety.heartbeat()
         # Send heartbeats continuously during movement
-        _safe_sleep(5.0, safety)  # 5 seconds
+        _safe_sleep(3.0, safety)  # 3 seconds
         driver.brake()
         if safety:
             safety.heartbeat()
@@ -373,103 +377,56 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         _play_prompt("bc_10_demo_positive.wav", safety)
 
 
-def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
+def _perform_360_rotation(safety: Optional[SafetyManager]) -> bool:
     """
-    Perform reposition sequence: backward → forward → rotate.
+    Perform 360 degree rotation, stopping if face becomes visible.
     Returns True if face becomes visible, False otherwise.
     """
     driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
-    ultrasonic_reader = get_ultrasonic_reader()
     
-    # Step 1: Move backward
-    LOGGER.info("Reposition step: moving backward")
+    LOGGER.info("Starting 360 degree rotation to find face")
     _update_ui_face("moving")
-    driver.set_motor_speed(50, 50)
-    driver.backward()
+    
+    # Set direction for continuous left rotation at 100% speed
+    # Calculate time for 360 degrees: approximately 12 seconds at 70% speed
+    # At 100% speed, it should be faster, estimate ~8-10 seconds for full rotation
+    driver.set_direction('A', 'backward')
+    driver.set_direction('B', 'forward')
+    driver.set_motor_speed(100, 100)  # Full speed (100%)
+    
     if safety:
         safety.heartbeat()
-    # Continuous distance monitoring with ultrasonic brake
+    
+    # Rotate and check for face continuously
     start_time = time.time()
-    last_ultrasonic_time = 0
-    while time.time() - start_time < 0.6:
+    last_face_check = 0
+    rotation_duration = 10.0  # Maximum rotation time for 360 degrees at 100% speed
+    
+    while time.time() - start_time < rotation_duration:
         if safety:
             safety.heartbeat()
-        # Check distance (HC-SR04 needs ~60ms between readings)
+        
+        # Check for face every 0.5 seconds during rotation
         current_time = time.time()
-        if current_time - last_ultrasonic_time >= 0.06:
-            distance = ultrasonic_reader()
-            last_ultrasonic_time = current_time
-            if distance > 0 and distance < 10:
-                LOGGER.warning("Ultrasonic brake triggered during reposition backward: distance=%.1f cm", distance)
+        if current_time - last_face_check >= 0.5:
+            if _detect_face_binary("during_360_rotation", safety):
+                LOGGER.info("Face visible during 360 rotation: True")
                 driver.brake()
-                break
-        _safe_sleep(0.05, safety)
-    else:
-        driver.brake()
-    if safety:
-        safety.heartbeat()
+                _update_ui_face("normal_smile")
+                return True
+            last_face_check = current_time
+        
+        _safe_sleep(0.1, safety)
     
-    # Check face after backward
-    _safe_sleep(0.5, safety)  # Brief pause before detection
-    if _detect_face_binary("after_backward", safety):
-        LOGGER.info("Face visible after backward: True")
-        _update_ui_face("normal_smile")
-        return True
-    
-    # Step 2: Move forward
-    LOGGER.info("Reposition step: moving forward")
-    _update_ui_face("moving")
-    driver.set_motor_speed(50, 50)
-    driver.forward()
-    if safety:
-        safety.heartbeat()
-    # Continuous distance monitoring with ultrasonic brake
-    start_time = time.time()
-    last_ultrasonic_time = 0
-    while time.time() - start_time < 0.8:
-        if safety:
-            safety.heartbeat()
-        # Check distance (HC-SR04 needs ~60ms between readings)
-        current_time = time.time()
-        if current_time - last_ultrasonic_time >= 0.06:
-            distance = ultrasonic_reader()
-            last_ultrasonic_time = current_time
-            if distance > 0 and distance < 10:
-                LOGGER.warning("Ultrasonic brake triggered during reposition forward: distance=%.1f cm", distance)
-                driver.brake()
-                break
-        _safe_sleep(0.05, safety)
-    else:
-        driver.brake()
-    if safety:
-        safety.heartbeat()
-    
-    # Check face after forward
-    _safe_sleep(0.5, safety)
-    if _detect_face_binary("after_forward", safety):
-        LOGGER.info("Face visible after forward: True")
-        _update_ui_face("normal_smile")
-        return True
-    
-    # Step 3: Rotate (random direction)
-    LOGGER.info("Reposition step: rotating")
-    _update_ui_face("moving")
-    direction = random.choice(["left", "right"])
-    if direction == "left":
-        driver.turn_left()
-    else:
-        driver.turn_right()
-    if safety:
-        safety.heartbeat()
-    _safe_sleep(0.6, safety)
+    # Complete rotation without finding face
     driver.brake()
     if safety:
         safety.heartbeat()
     
-    # Check face after rotation
+    # Final face check after rotation
     _safe_sleep(0.5, safety)
-    face_visible = _detect_face_binary("after_rotate", safety)
-    LOGGER.info("Face visible after rotate: %s", face_visible)
+    face_visible = _detect_face_binary("after_360_rotation", safety)
+    LOGGER.info("Face visible after 360 rotation: %s", face_visible)
     _update_ui_face("normal_smile")
     
     return face_visible
@@ -492,7 +449,7 @@ class BasicCommandsModule(BaseModule):
         self.logger.info("Module start: basic_commands")
         self.reposition_attempted = False
         
-        # Start iPhone UI server
+        # Start iPhone UI server first
         try:
             from sessions.modules.ui_server import start_ui_server
             start_ui_server(port=8080)
@@ -511,8 +468,8 @@ class BasicCommandsModule(BaseModule):
             except Exception:
                 self.safety = None
         
-        # Play session intro prompt
-        _play_prompt("bc_02_session_intro.wav", self.safety)
+        # Wait 5 seconds before starting greeting
+        _safe_sleep(5.0, self.safety)
 
     def run(self) -> ModuleResult:
         """Run basic commands - always starts with greeting, then 2 other commands, then face detection."""
@@ -522,55 +479,50 @@ class BasicCommandsModule(BaseModule):
             self._set_running(False)
             return ModuleResult(completed=False, engagement=None)
         
-        # Step 1: Always start with greeting command
+        # Step 1: Always start with greeting command (first prompt)
         self.logger.info("Demonstrating commands: greeting (always first)")
         _perform_safe_command("greeting", self.safety)
         
-        # Step 2: Select 2 other commands (excluding greeting)
+        # Step 2: Play session intro prompt (second prompt)
+        _play_prompt("bc_02_session_intro.wav", self.safety)
+        
+        # Step 3: Select 2 other commands (excluding greeting)
         available_commands = ["forward", "backward", "turn_left", "turn_right", "stop"]
         selected_commands = random.sample(available_commands, min(2, len(available_commands)))
         
         self.logger.info("Demonstrating additional commands: %s", selected_commands)
         
-        # Step 3: Demonstrate the 2 other commands
+        # Step 4: Demonstrate the 2 other commands
         for i, cmd in enumerate(selected_commands):
             if self._stop_requested:
                 break
             
             _perform_safe_command(cmd, self.safety)
         
-        # Step 4: Face detection logic after all commands
+        # Step 5: Face detection logic after all commands
         # Initial face observation
         face_visible_initial = _detect_face_binary("initial", self.safety)
         
-        # If face not visible, play attention prompt and wait
-        if not face_visible_initial:
-            _play_prompt("bc_03_attention_look_at_me.wav", self.safety)
-            # Use safe_sleep to ensure heartbeats during wait
-            _safe_sleep(2.0, self.safety)
-            _play_prompt("bc_04_calm_wait.wav", self.safety)
-            face_visible_initial = _detect_face_binary("retry", self.safety)
-        
-        # ONE reposition attempt if face not visible
+        # If face not visible, perform 360 degree rotation
         if not face_visible_initial and not self.reposition_attempted:
-            self.logger.info("Reposition attempted: yes")
+            self.logger.info("Face not visible, starting 360 degree rotation")
             self.reposition_attempted = True
             
             # Play reposition start prompt
             _play_prompt("bc_12_reposition_start.wav", self.safety)
             
-            # Perform full reposition sequence: backward → forward → rotate
-            face_visible_after = _perform_reposition(self.safety)
+            # Perform 360 degree rotation, stopping if face becomes visible
+            face_visible_after = _perform_360_rotation(self.safety)
             
             # Play reposition done prompt
             _play_prompt("bc_13_reposition_done.wav", self.safety)
             
-            self.logger.info("Face visible (after reposition): %s", face_visible_after)
+            self.logger.info("Face visible (after 360 rotation): %s", face_visible_after)
         else:
-            self.logger.info("Reposition attempted: no")
+            self.logger.info("Face visible or rotation already attempted")
             face_visible_after = face_visible_initial
         
-        # Observe for 2 seconds after face detection/reposition
+        # Observe for 2 seconds after face detection/rotation
         # Play observation waiting prompt
         _play_prompt("bc_11_observe_waiting.wav", self.safety)
         # Send heartbeats during observation (safe_sleep handles this)

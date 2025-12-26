@@ -24,38 +24,53 @@ rpi_gpio.setup(TRIG, "out")
 rpi_gpio.setup(ECHO, "in")
 
 
-def read_distance_cm(timeout_s=0.03) -> float:
+def read_distance_cm(timeout_s=0.02) -> float:
     """
     Measure distance using HC-SR04.
+    Based on working code from raw_scripts/ultrasonic_test.py
     Returns:
         distance in cm, or -1 on timeout
     """
-    # Trigger low
+    POLL_SLEEP = 0.0001
+    
+    # Ensure trig low with longer delay (from working code)
     rpi_gpio.write(TRIG, 0)
-    time.sleep(0.0002)
+    time.sleep(0.05)
 
     # Send 10µs pulse
     rpi_gpio.write(TRIG, 1)
     time.sleep(0.00001)
     rpi_gpio.write(TRIG, 0)
 
-    # Wait for echo start
-    start_time = time.time()
-    while rpi_gpio.read(ECHO) == 0:
-        if time.time() - start_time > timeout_s:
-            LOGGER.warning("Ultrasonic timeout: no echo start")
-            return -1
-
-    pulse_start = time.time()
+    # Wait for echo start (with polling like working code)
+    start_deadline = time.time() + timeout_s
+    pulse_start = None
+    while time.time() < start_deadline:
+        if rpi_gpio.read(ECHO) == 1:
+            pulse_start = time.time()
+            break
+        time.sleep(POLL_SLEEP)
+    else:
+        # Timeout - no echo start
+        return -1
 
     # Wait for echo end
-    while rpi_gpio.read(ECHO) == 1:
-        if time.time() - pulse_start > timeout_s:
-            LOGGER.warning("Ultrasonic timeout: echo too long")
-            return -1
-
-    pulse_end = time.time()
+    end_deadline = time.time() + timeout_s
+    pulse_end = None
+    while time.time() < end_deadline:
+        if rpi_gpio.read(ECHO) == 0:
+            pulse_end = time.time()
+            break
+        time.sleep(POLL_SLEEP)
+    else:
+        # Timeout - echo too long
+        return -1
 
     duration = pulse_end - pulse_start
-    distance = duration * 17150  # speed of sound conversion
-    return round(distance, 2)
+    dist = duration * 17150  # speed of sound conversion
+    
+    # Validate range (from working code)
+    if dist < 2 or dist > 400:
+        return -1
+    
+    return round(dist, 2)
