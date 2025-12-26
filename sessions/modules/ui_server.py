@@ -51,9 +51,11 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             font-family: Arial, sans-serif;
         }
         .face-container {
-            width: 200px;
-            height: 200px;
+            width: 260px;
+            height: 260px;
             position: relative;
+            transform: scale(1.3);
+            transform-origin: center;
         }
         .eye {
             width: 30px;
@@ -118,6 +120,8 @@ class UIRequestHandler(BaseHTTPRequestHandler):
             // Mouth animation based on mode
             if (mode === 'speaking' || mode === 'moving') {
                 mouth.style.height = '25px';
+            } else if (mode === 'normal_smile' || mode === 'normal' || mode === 'greeting' || mode === 'stop') {
+                mouth.style.height = '20px';
             } else {
                 mouth.style.height = '20px';
             }

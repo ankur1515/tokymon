@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import random
+import subprocess
 import time
 import threading
+from pathlib import Path
 from typing import Optional
 
 from control import motors
 from control.safety import SafetyManager
 from display import expressions, max7219_driver
 from sessions.modules.base import BaseModule, ModuleResult
+from sensors.interface import get_ultrasonic_reader
 from system.config import CONFIG
 from system.logger import get_logger
 from vision import camera
@@ -19,7 +22,7 @@ LOGGER = get_logger("basic_commands")
 
 # Global state for iPhone UI (simple in-memory state)
 _ui_state = {
-    "face_mode": "normal",  # normal, greeting, moving, stop
+    "face_mode": "normal_smile",  # normal_smile, greeting, moving, stop, speaking
     "last_update": time.time(),
 }
 _ui_lock = threading.Lock()
@@ -30,6 +33,44 @@ def _update_ui_face(mode: str) -> None:
     with _ui_lock:
         _ui_state["face_mode"] = mode
         _ui_state["last_update"] = time.time()
+
+
+def _play_prompt(filename: str, safety: Optional[SafetyManager]) -> None:
+    """Play WAV file with blocking playback and UI face updates."""
+    # Set face to speaking
+    _update_ui_face("speaking")
+    
+    # Construct path
+    prompt_path = Path("voice_prompts/en_wav") / filename
+    
+    # Check simulator mode
+    USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
+    if USE_SIM:
+        LOGGER.info("Voice prompt (sim): %s", filename)
+        _safe_sleep(1.0, safety)  # Simulate playback time
+    else:
+        # Use aplay via subprocess (blocking)
+        try:
+            SPEAKER_DEVICE = "plughw:3,0"
+            cmd = ["aplay", "-D", SPEAKER_DEVICE, str(prompt_path)]
+            # Send heartbeats during playback
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            # Monitor process and send heartbeats
+            while proc.poll() is None:
+                if safety:
+                    safety.heartbeat()
+                time.sleep(0.1)
+            proc.wait()
+            LOGGER.info("Voice prompt played: %s", filename)
+        except FileNotFoundError:
+            LOGGER.warning("aplay not found; falling back to simulated playback")
+            _safe_sleep(1.0, safety)
+        except Exception as exc:
+            LOGGER.warning("Voice prompt playback failed: %s", exc)
+            _safe_sleep(1.0, safety)  # Fallback to simulated time
+    
+    # Set face back to normal_smile
+    _update_ui_face("normal_smile")
 
 
 def _safe_sleep(seconds: float, safety: Optional[SafetyManager]) -> None:
@@ -187,13 +228,17 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
     driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
     
     if command == "greeting":
+        # Play greeting prompt
+        _play_prompt("bc_01_greeting_hello.wav", safety)
         # No movement, just face animation
         _update_ui_face("greeting")
         _show_face_led("normal", duration=2.0, safety=safety)
-        _update_ui_face("normal")
+        _update_ui_face("normal_smile")
         return
     
     if command == "forward":
+        # Play forward demo prompt
+        _play_prompt("bc_05_demo_forward.wav", safety)
         _update_ui_face("moving")
         _show_face_led("normal", duration=0.2, safety=safety)
         if safety:
@@ -202,15 +247,35 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         driver.forward()
         if safety:
             safety.heartbeat()
-        # Send heartbeats continuously during movement
-        _safe_sleep(0.6, safety)  # ~5-10cm at slow speed
-        driver.brake()
+        # Continuous distance monitoring with ultrasonic brake
+        ultrasonic_reader = get_ultrasonic_reader()
+        start_time = time.time()
+        while time.time() - start_time < 5.0:
+            if safety:
+                safety.heartbeat()
+            
+            # Check distance
+            distance = ultrasonic_reader()
+            if distance > 0 and distance < 10:  # Valid reading and too close
+                LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
+                driver.brake()
+                break
+            
+            # Sleep in small chunks to allow frequent checks
+            _safe_sleep(0.1, safety)
+        else:
+            # Normal completion after 5 seconds
+            driver.brake()
         if safety:
             safety.heartbeat()
-        _update_ui_face("normal")
+        _update_ui_face("normal_smile")
         _show_face_led("normal", duration=0.2, safety=safety)
+        # Play positive feedback
+        _play_prompt("bc_10_demo_positive.wav", safety)
     
     elif command == "backward":
+        # Play backward demo prompt
+        _play_prompt("bc_06_demo_backward.wav", safety)
         _update_ui_face("moving")
         _show_face_led("normal", duration=0.2, safety=safety)
         if safety:
@@ -219,15 +284,35 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         driver.backward()
         if safety:
             safety.heartbeat()
-        # Send heartbeats continuously during movement
-        _safe_sleep(0.6, safety)  # ~5-10cm at slow speed
-        driver.brake()
+        # Continuous distance monitoring with ultrasonic brake
+        ultrasonic_reader = get_ultrasonic_reader()
+        start_time = time.time()
+        while time.time() - start_time < 5.0:
+            if safety:
+                safety.heartbeat()
+            
+            # Check distance
+            distance = ultrasonic_reader()
+            if distance > 0 and distance < 10:  # Valid reading and too close
+                LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
+                driver.brake()
+                break
+            
+            # Sleep in small chunks to allow frequent checks
+            _safe_sleep(0.1, safety)
+        else:
+            # Normal completion after 5 seconds
+            driver.brake()
         if safety:
             safety.heartbeat()
-        _update_ui_face("normal")
+        _update_ui_face("normal_smile")
         _show_face_led("normal", duration=0.2, safety=safety)
+        # Play positive feedback
+        _play_prompt("bc_10_demo_positive.wav", safety)
     
     elif command == "turn_left":
+        # Play turn left demo prompt
+        _play_prompt("bc_07_demo_turn_left.wav", safety)
         _update_ui_face("moving")
         _show_face_led("normal", duration=0.15, safety=safety)
         if safety:
@@ -236,14 +321,18 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         if safety:
             safety.heartbeat()
         # Send heartbeats continuously during movement
-        _safe_sleep(0.6, safety)  # ~10-15 degrees
+        _safe_sleep(5.0, safety)  # 5 seconds
         driver.brake()
         if safety:
             safety.heartbeat()
-        _update_ui_face("normal")
+        _update_ui_face("normal_smile")
         _show_face_led("normal", duration=0.2, safety=safety)
+        # Play positive feedback
+        _play_prompt("bc_10_demo_positive.wav", safety)
     
     elif command == "turn_right":
+        # Play turn right demo prompt
+        _play_prompt("bc_08_demo_turn_right.wav", safety)
         _update_ui_face("moving")
         _show_face_led("normal", duration=0.15, safety=safety)
         if safety:
@@ -252,20 +341,28 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         if safety:
             safety.heartbeat()
         # Send heartbeats continuously during movement
-        _safe_sleep(0.6, safety)  # ~10-15 degrees
+        _safe_sleep(5.0, safety)  # 5 seconds
         driver.brake()
         if safety:
             safety.heartbeat()
-        _update_ui_face("normal")
+        _update_ui_face("normal_smile")
         _show_face_led("normal", duration=0.2, safety=safety)
+        # Play positive feedback
+        _play_prompt("bc_10_demo_positive.wav", safety)
     
     elif command == "stop":
+        # Play stop demo prompt
+        _play_prompt("bc_09_demo_stop.wav", safety)
         _update_ui_face("stop")
         driver.brake()
         if safety:
             safety.heartbeat()
+        # Hold state for 5 seconds
+        _safe_sleep(5.0, safety)
         _show_face_led("normal", duration=1.0, safety=safety)
-        _update_ui_face("normal")
+        _update_ui_face("normal_smile")
+        # Play positive feedback
+        _play_prompt("bc_10_demo_positive.wav", safety)
 
 
 def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
@@ -274,6 +371,7 @@ def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
     Returns True if face becomes visible, False otherwise.
     """
     driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
+    ultrasonic_reader = get_ultrasonic_reader()
     
     # Step 1: Move backward
     LOGGER.info("Reposition step: moving backward")
@@ -282,8 +380,19 @@ def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
     driver.backward()
     if safety:
         safety.heartbeat()
-    _safe_sleep(0.6, safety)
-    driver.brake()
+    # Continuous distance monitoring with ultrasonic brake
+    start_time = time.time()
+    while time.time() - start_time < 0.6:
+        if safety:
+            safety.heartbeat()
+        distance = ultrasonic_reader()
+        if distance > 0 and distance < 10:
+            LOGGER.warning("Ultrasonic brake triggered during reposition backward: distance=%.1f cm", distance)
+            driver.brake()
+            break
+        _safe_sleep(0.1, safety)
+    else:
+        driver.brake()
     if safety:
         safety.heartbeat()
     
@@ -291,7 +400,7 @@ def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
     _safe_sleep(0.5, safety)  # Brief pause before detection
     if _detect_face_binary("after_backward", safety):
         LOGGER.info("Face visible after backward: True")
-        _update_ui_face("normal")
+        _update_ui_face("normal_smile")
         return True
     
     # Step 2: Move forward
@@ -301,8 +410,19 @@ def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
     driver.forward()
     if safety:
         safety.heartbeat()
-    _safe_sleep(0.8, safety)  # Slightly longer forward
-    driver.brake()
+    # Continuous distance monitoring with ultrasonic brake
+    start_time = time.time()
+    while time.time() - start_time < 0.8:
+        if safety:
+            safety.heartbeat()
+        distance = ultrasonic_reader()
+        if distance > 0 and distance < 10:
+            LOGGER.warning("Ultrasonic brake triggered during reposition forward: distance=%.1f cm", distance)
+            driver.brake()
+            break
+        _safe_sleep(0.1, safety)
+    else:
+        driver.brake()
     if safety:
         safety.heartbeat()
     
@@ -310,7 +430,7 @@ def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
     _safe_sleep(0.5, safety)
     if _detect_face_binary("after_forward", safety):
         LOGGER.info("Face visible after forward: True")
-        _update_ui_face("normal")
+        _update_ui_face("normal_smile")
         return True
     
     # Step 3: Rotate (random direction)
@@ -332,7 +452,7 @@ def _perform_reposition(safety: Optional[SafetyManager]) -> bool:
     _safe_sleep(0.5, safety)
     face_visible = _detect_face_binary("after_rotate", safety)
     LOGGER.info("Face visible after rotate: %s", face_visible)
-    _update_ui_face("normal")
+    _update_ui_face("normal_smile")
     
     return face_visible
 
@@ -372,6 +492,9 @@ class BasicCommandsModule(BaseModule):
                 self.safety.start()
             except Exception:
                 self.safety = None
+        
+        # Play session intro prompt
+        _play_prompt("bc_02_session_intro.wav", self.safety)
 
     def run(self) -> ModuleResult:
         """Run basic commands - demonstrates ≤3 commands safely."""
@@ -390,10 +513,12 @@ class BasicCommandsModule(BaseModule):
         # Initial face observation
         face_visible_initial = _detect_face_binary("initial", self.safety)
         
-        # If face not visible, wait and check again (with heartbeats)
+        # If face not visible, play attention prompt and wait
         if not face_visible_initial:
+            _play_prompt("bc_03_attention_look_at_me.wav", self.safety)
             # Use safe_sleep to ensure heartbeats during wait
             _safe_sleep(2.0, self.safety)
+            _play_prompt("bc_04_calm_wait.wav", self.safety)
             face_visible_initial = _detect_face_binary("retry", self.safety)
         
         # ONE reposition attempt if face not visible
@@ -401,8 +526,14 @@ class BasicCommandsModule(BaseModule):
             self.logger.info("Reposition attempted: yes")
             self.reposition_attempted = True
             
+            # Play reposition start prompt
+            _play_prompt("bc_12_reposition_start.wav", self.safety)
+            
             # Perform full reposition sequence: backward → forward → rotate
             face_visible_after = _perform_reposition(self.safety)
+            
+            # Play reposition done prompt
+            _play_prompt("bc_13_reposition_done.wav", self.safety)
             
             self.logger.info("Face visible (after reposition): %s", face_visible_after)
         else:
@@ -417,6 +548,8 @@ class BasicCommandsModule(BaseModule):
             _perform_safe_command(cmd, self.safety)
             
             # Observe for 2 seconds after each command
+            # Play observation waiting prompt
+            _play_prompt("bc_11_observe_waiting.wav", self.safety)
             # Send heartbeats during observation (safe_sleep handles this)
             if self.safety:
                 self.safety.heartbeat()
@@ -427,8 +560,11 @@ class BasicCommandsModule(BaseModule):
             # Log observation (binary only, no interpretation)
             self.logger.debug("Face visible after command %s: %s", cmd, face_during)
         
+        # Play session closing prompt
+        _play_prompt("bc_14_session_closing.wav", self.safety)
+        
         # Final state
-        _update_ui_face("normal")
+        _update_ui_face("normal_smile")
         _show_face_led("normal", duration=1.0, safety=self.safety)
         
         if self.safety:
@@ -440,6 +576,10 @@ class BasicCommandsModule(BaseModule):
     def exit(self) -> None:
         """Cleanup basic commands and robot interaction."""
         self.logger.info("Module end: basic_commands")
+        
+        # Play goodbye prompt
+        _play_prompt("bc_15_session_goodbye.wav", self.safety)
+        
         try:
             driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
             driver.brake()
