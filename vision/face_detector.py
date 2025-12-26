@@ -139,17 +139,17 @@ def face_present(frame: Optional[object], context: str = "unknown") -> bool:  # 
         else:
             gray = frame
         
-        # Detect faces with stricter parameters to reduce false positives
+        # Detect faces with balanced parameters (more sensitive than before, but still validated)
         faces = detector.detectMultiScale(
             gray,
-            scaleFactor=1.2,  # Increased from 1.1 - less aggressive scaling = fewer false positives
-            minNeighbors=8,   # Increased from 5 - requires more neighbor detections = stricter
-            minSize=(50, 50),  # Increased from 30x30 - filters out very small detections
-            maxSize=(300, 300),  # Added - filters out very large detections (likely false positives)
+            scaleFactor=1.1,  # More sensitive than 1.2 - better detection of faces
+            minNeighbors=5,   # Reduced from 8 - less strict, more sensitive
+            minSize=(40, 40),  # Reduced from 50x50 - can detect smaller faces
+            maxSize=(400, 400),  # Increased from 300x300 - can detect larger faces
             flags=cv2.CASCADE_SCALE_IMAGE
         )
         
-        # Additional validation: filter faces by aspect ratio and size
+        # Additional validation: filter faces by aspect ratio and size (more lenient)
         # Real faces typically have aspect ratio around 0.7-1.0 (width/height)
         valid_faces = []
         for (x, y, w, h) in faces:
@@ -158,8 +158,9 @@ def face_present(frame: Optional[object], context: str = "unknown") -> bool:  # 
             image_area = gray.shape[0] * gray.shape[1]
             area_ratio = face_area / image_area if image_area > 0 else 0
             
-            # Validate: reasonable aspect ratio (0.6-1.2) and reasonable size (0.5%-15% of image)
-            if 0.6 <= aspect_ratio <= 1.2 and 0.005 <= area_ratio <= 0.15:
+            # Validate: reasonable aspect ratio (0.5-1.5) and reasonable size (0.3%-20% of image)
+            # More lenient than before to catch more real faces
+            if 0.5 <= aspect_ratio <= 1.5 and 0.003 <= area_ratio <= 0.20:
                 valid_faces.append((x, y, w, h))
             else:
                 LOGGER.debug(

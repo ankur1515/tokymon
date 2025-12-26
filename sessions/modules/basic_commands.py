@@ -92,10 +92,10 @@ def _safe_sleep(seconds: float, safety: Optional[SafetyManager]) -> None:
             time.sleep(sleep_time)
 
 
-def _detect_face_binary(context: str, safety: Optional[SafetyManager]) -> bool:
+def _detect_face_binary(context: str, safety: Optional[SafetyManager], retries: int = 2) -> bool:
     """
     Binary face detection - returns True if face present, False otherwise.
-    Uses real OpenCV Haar Cascade detection.
+    Uses real OpenCV Haar Cascade detection with retry logic.
     """
     USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
     
@@ -105,35 +105,52 @@ def _detect_face_binary(context: str, safety: Optional[SafetyManager]) -> bool:
         LOGGER.info("Face visible (%s, sim): %s", context, result)
         return result
     
-    # Production: real face detection
-    try:
-        # Heartbeat before camera capture
-        if safety:
-            safety.heartbeat()
-        
-        # Capture frame with periodic heartbeats during capture
-        # Camera capture can take up to 5 seconds, so we need to send heartbeats
-        frame = _capture_frame_with_heartbeat(context, safety)
-        
-        if frame is None:
-            LOGGER.warning("Camera capture returned None (dependencies missing?)")
+    # Production: real face detection with retries
+    for attempt in range(retries + 1):
+        try:
+            # Heartbeat before camera capture
+            if safety:
+                safety.heartbeat()
+            
+            # Capture frame with periodic heartbeats during capture
+            # Camera capture can take up to 5 seconds, so we need to send heartbeats
+            frame = _capture_frame_with_heartbeat(context, safety)
+            
+            if frame is None:
+                LOGGER.warning("Camera capture returned None (dependencies missing?)")
+                if attempt < retries:
+                    _safe_sleep(0.5, safety)  # Brief wait before retry
+                    continue
+                return False
+            
+            # Heartbeat after capture
+            if safety:
+                safety.heartbeat()
+            
+            # Detect face (should be fast, but send heartbeat just in case)
+            face_visible = face_detector.face_present(frame, context=context)
+            if safety:
+                safety.heartbeat()
+            
+            if face_visible:
+                LOGGER.info("Face visible (%s): True (attempt %d/%d)", context, attempt + 1, retries + 1)
+                return True
+            elif attempt < retries:
+                # Retry if no face detected
+                LOGGER.debug("Face not visible (%s), retrying (attempt %d/%d)", context, attempt + 1, retries + 1)
+                _safe_sleep(0.5, safety)  # Brief wait before retry
+            else:
+                LOGGER.info("Face visible (%s): False (after %d attempts)", context, retries + 1)
+                return False
+            
+        except Exception as exc:
+            LOGGER.warning("Face detection error (%s, attempt %d/%d): %s", context, attempt + 1, retries + 1, exc)
+            if attempt < retries:
+                _safe_sleep(0.5, safety)  # Brief wait before retry
+                continue
             return False
-        
-        # Heartbeat after capture
-        if safety:
-            safety.heartbeat()
-        
-        # Detect face (should be fast, but send heartbeat just in case)
-        face_visible = face_detector.face_present(frame, context=context)
-        if safety:
-            safety.heartbeat()
-        
-        LOGGER.info("Face visible (%s): %s", context, face_visible)
-        return face_visible
-        
-    except Exception as exc:
-        LOGGER.warning("Face detection error (%s): %s", context, exc)
-        return False
+    
+    return False
 
 
 def _capture_frame_with_heartbeat(context: str, safety: Optional[SafetyManager]) -> Optional[object]:
@@ -250,6 +267,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         ultrasonic_reader = get_ultrasonic_reader()
         start_time = time.time()
         last_ultrasonic_time = 0
+        distances_logged = []
         while time.time() - start_time < 3.0:  # 3 seconds duration
             if safety:
                 safety.heartbeat()
@@ -259,6 +277,11 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
             if current_time - last_ultrasonic_time >= 0.06:  # Minimum 60ms between readings
                 distance = ultrasonic_reader()
                 last_ultrasonic_time = current_time
+                if distance > 0:
+                    distances_logged.append(distance)
+                    LOGGER.info("Ultrasonic distance during forward: %.1f cm", distance)
+                elif distance == -1:
+                    LOGGER.debug("Ultrasonic timeout during forward")
                 if distance > 0 and distance < 20:  # Valid reading and too close
                     LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
                     driver.brake()
@@ -271,6 +294,20 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
             driver.brake()
         if safety:
             safety.heartbeat()
+        
+        # Log final distance after command
+        final_distance = ultrasonic_reader()
+        if final_distance > 0:
+            LOGGER.info("Ultrasonic distance after forward: %.1f cm", final_distance)
+        elif final_distance == -1:
+            LOGGER.debug("Ultrasonic timeout after forward")
+        if distances_logged:
+            avg_distance = sum(distances_logged) / len(distances_logged)
+            LOGGER.info("Average ultrasonic distance during forward: %.1f cm (from %d readings)", 
+                       avg_distance, len(distances_logged))
+        else:
+            LOGGER.warning("No valid ultrasonic readings during forward command")
+        
         _update_ui_face("normal_smile")
         _show_face_led("normal", duration=0.2, safety=safety)
         # Play positive feedback
@@ -290,6 +327,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         ultrasonic_reader = get_ultrasonic_reader()
         start_time = time.time()
         last_ultrasonic_time = 0
+        distances_logged = []
         while time.time() - start_time < 3.0:  # 3 seconds duration
             if safety:
                 safety.heartbeat()
@@ -299,6 +337,11 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
             if current_time - last_ultrasonic_time >= 0.06:  # Minimum 60ms between readings
                 distance = ultrasonic_reader()
                 last_ultrasonic_time = current_time
+                if distance > 0:
+                    distances_logged.append(distance)
+                    LOGGER.info("Ultrasonic distance during backward: %.1f cm", distance)
+                elif distance == -1:
+                    LOGGER.debug("Ultrasonic timeout during backward")
                 if distance > 0 and distance < 20:  # Valid reading and too close
                     LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
                     driver.brake()
@@ -311,6 +354,20 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
             driver.brake()
         if safety:
             safety.heartbeat()
+        
+        # Log final distance after command
+        final_distance = ultrasonic_reader()
+        if final_distance > 0:
+            LOGGER.info("Ultrasonic distance after backward: %.1f cm", final_distance)
+        elif final_distance == -1:
+            LOGGER.debug("Ultrasonic timeout after backward")
+        if distances_logged:
+            avg_distance = sum(distances_logged) / len(distances_logged)
+            LOGGER.info("Average ultrasonic distance during backward: %.1f cm (from %d readings)", 
+                       avg_distance, len(distances_logged))
+        else:
+            LOGGER.warning("No valid ultrasonic readings during backward command")
+        
         _update_ui_face("normal_smile")
         _show_face_led("normal", duration=0.2, safety=safety)
         # Play positive feedback
