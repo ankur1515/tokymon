@@ -21,8 +21,10 @@ USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 TOKY_ENV = os.environ.get("TOKY_ENV", "dev").lower()
 
 # --- Motor Configuration ---
-# PWM frequency for TB6612FNG: 1-100 kHz supported, 20 kHz optimal per best practices
-DEFAULT_PWM_FREQUENCY = CONFIG["services"].get("motors", {}).get("pwm_frequency_hz", 20000)
+# PWM frequency for TB6612FNG: Driver supports 1-100 kHz, but hardware PWM has limits
+# lgpio hardware PWM on Raspberry Pi 5 typically supports up to ~10 kHz reliably
+# Default to 1000 Hz for compatibility, can be increased via config if hardware supports it
+DEFAULT_PWM_FREQUENCY = CONFIG["services"].get("motors", {}).get("pwm_frequency_hz", 1000)
 
 # --- Pin Definitions (BCM numbering scheme for Raspberry Pi 5) ---
 # Motor A (Left Side Wheels) Control Pins
@@ -47,6 +49,16 @@ class MotorDriver:
         # Use config value if not explicitly provided, fallback to default
         if pwm_frequency is None:
             pwm_frequency = DEFAULT_PWM_FREQUENCY
+        
+        # Validate frequency range for lgpio hardware PWM (typically 1-10000 Hz)
+        # Higher frequencies may not be supported by hardware PWM
+        if pwm_frequency > 10000:
+            LOGGER.warning("PWM frequency %d Hz may be too high for hardware PWM. Limiting to 10000 Hz.", pwm_frequency)
+            pwm_frequency = 10000
+        elif pwm_frequency < 1:
+            LOGGER.warning("PWM frequency %d Hz too low. Using minimum 1 Hz.", pwm_frequency)
+            pwm_frequency = 1
+        
         self.pwm_frequency = pwm_frequency
         
         if USE_SIM:
