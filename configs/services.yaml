@@ -12,6 +12,10 @@ runtime:
   use_simulator: false
   heartbeat_interval_s: 1.0
   safe_stop_timeout_s: 2.0
+motors:
+  # TB6612FNG PWM frequency: 1-100 kHz supported, 20 kHz optimal for smooth operation and good torque
+  # Higher frequencies reduce audible noise but may slightly reduce efficiency
+  pwm_frequency_hz: 20000  # Default: 20000 Hz (20 kHz) per TB6612FNG best practices
 mqtt:
   broker: "localhost"
   port: 1883

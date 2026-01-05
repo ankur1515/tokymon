@@ -20,6 +20,10 @@ LOGGER = get_logger("motors")
 USE_SIM = CONFIG["services"]["runtime"].get("use_simulator", False)
 TOKY_ENV = os.environ.get("TOKY_ENV", "dev").lower()
 
+# --- Motor Configuration ---
+# PWM frequency for TB6612FNG: 1-100 kHz supported, 20 kHz optimal per best practices
+DEFAULT_PWM_FREQUENCY = CONFIG["services"].get("motors", {}).get("pwm_frequency_hz", 20000)
+
 # --- Pin Definitions (BCM numbering scheme for Raspberry Pi 5) ---
 # Motor A (Left Side Wheels) Control Pins
 PWMA_PIN = 12  # Motor A speed (Hardware PWM0)
@@ -39,11 +43,15 @@ class MotorDriver:
     Controls two DC motors (driving four wheels in a differential setup) 
     via the TB6612FNG driver using lgpio.
     """
-    def __init__(self, pwm_frequency=1000):
+    def __init__(self, pwm_frequency=None):
+        # Use config value if not explicitly provided, fallback to default
+        if pwm_frequency is None:
+            pwm_frequency = DEFAULT_PWM_FREQUENCY
         self.pwm_frequency = pwm_frequency
         
         if USE_SIM:
             LOGGER.info("MotorDriver: simulator mode (no hardware init)")
+            LOGGER.info("MotorDriver: PWM frequency configured: %d Hz", self.pwm_frequency)
             self.h = None
             return
         
@@ -74,16 +82,20 @@ class MotorDriver:
         
         # Initialize STBY to HIGH to enable the motor driver
         GPIO.gpio_write(self.h, STBY_PIN, GPIO.HIGH)
-        LOGGER.info(f"Driver enabled: STBY (GPIO{STBY_PIN}) set HIGH.")
+        LOGGER.info("Driver enabled: STBY (GPIO%d) set HIGH.", STBY_PIN)
         
         # Start PWM at 0% duty cycle (stopped)
         self.set_motor_speed(0, 0)
-        LOGGER.info(f"PWM ready on GPIO{PWMA_PIN} and GPIO{PWMB_PIN} at {pwm_frequency}Hz.")
+        LOGGER.info("PWM initialized: GPIO%d (Motor A) and GPIO%d (Motor B) at %d Hz", 
+                   PWMA_PIN, PWMB_PIN, self.pwm_frequency)
 
     def set_motor_speed(self, speed_a, speed_b):
-        """Sets the duty cycle (speed) for both motors (0-100)."""
+        """
+        Sets the duty cycle (speed) for both motors (0-100).
+        Note: lgpio.tx_pwm expects duty cycle as 0-100 (percentage).
+        """
         if USE_SIM or self.h is None:
-            LOGGER.debug("Motor speed (sim): A=%s%%, B=%s%%", speed_a, speed_b)
+            LOGGER.debug("Motor speed (sim): A=%.1f%%, B=%.1f%%", speed_a, speed_b)
             return
         
         speed_a = max(0, min(100, speed_a))
@@ -92,8 +104,11 @@ class MotorDriver:
         try:
             GPIO.tx_pwm(self.h, PWMA_PIN, self.pwm_frequency, speed_a)
             GPIO.tx_pwm(self.h, PWMB_PIN, self.pwm_frequency, speed_b)
+            LOGGER.info("Motor speed set: A=%.1f%% (PWM: %d Hz, duty=%.1f), B=%.1f%% (PWM: %d Hz, duty=%.1f)", 
+                       speed_a, self.pwm_frequency, speed_a, speed_b, self.pwm_frequency, speed_b)
         except Exception as e:
-            LOGGER.warning("PWM set failed: %s", e)
+            LOGGER.error("PWM set failed: %s (Motor A: %.1f%%, Motor B: %.1f%%, Frequency: %d Hz)", 
+                        e, speed_a, speed_b, self.pwm_frequency)
 
     def set_direction(self, motor_side, direction):
         """
@@ -104,6 +119,8 @@ class MotorDriver:
         if USE_SIM or self.h is None:
             LOGGER.debug("Motor %s direction (sim): %s", motor_side, direction)
             return
+        
+        LOGGER.debug("Setting Motor %s direction: %s", motor_side, direction)
         
         if motor_side == 'A':
             # --- Motor A Polarity Fix: Swapped Logic for AIN1/AIN2 ---
@@ -146,14 +163,16 @@ class MotorDriver:
 
     def forward(self, speed=90):
         """Drives all four wheels forward (Left and Right)."""
-        LOGGER.info(f"Action: Moving Forward (All 4 Wheels) at {speed}% speed.")
+        LOGGER.info("Action: Moving Forward (All 4 Wheels) at %.1f%% speed (PWM: %d Hz)", 
+                   speed, self.pwm_frequency)
         self.set_direction('A', 'forward')
         self.set_direction('B', 'forward')
         self.set_motor_speed(speed, speed)
 
     def backward(self, speed=90):
         """Drives all four wheels backward (Left and Right)."""
-        LOGGER.info(f"Action: Moving Backward (All 4 Wheels) at {speed}% speed.")
+        LOGGER.info("Action: Moving Backward (All 4 Wheels) at %.1f%% speed (PWM: %d Hz)", 
+                   speed, self.pwm_frequency)
         self.set_direction('A', 'backward')
         self.set_direction('B', 'backward')
         self.set_motor_speed(speed, speed)
@@ -170,9 +189,10 @@ class MotorDriver:
         self.set_direction('B', 'coast')
 
     def turn_left(self):
-        """Pivot Turn Left: Left Motor Backward, Right Motor Forward (Now at 50% Speed)."""
-        turn_speed = 70
-        LOGGER.info(f"Action: Pivot Turn Left (Left Wheels Back {turn_speed}%, Right Wheels Forward {turn_speed}%)")
+        """Pivot Turn Left: Left Motor Backward, Right Motor Forward."""
+        turn_speed = 100  # Use full power for turning to ensure adequate torque
+        LOGGER.info("Action: Pivot Turn Left (Left Wheels Back %.1f%%, Right Wheels Forward %.1f%%, PWM: %d Hz)", 
+                   turn_speed, turn_speed, self.pwm_frequency)
         
         # Left side (A) must pull backward
         self.set_direction('A', 'backward')
@@ -182,9 +202,10 @@ class MotorDriver:
         self.set_motor_speed(turn_speed, turn_speed) 
 
     def turn_right(self):
-        """Pivot Turn Right: Left Motor Forward, Right Motor Backward (Now at 50% Speed)."""
-        turn_speed = 70
-        LOGGER.info(f"Action: Pivot Turn Right (Left Wheels Forward {turn_speed}%, Right Wheels Back {turn_speed}%)")
+        """Pivot Turn Right: Left Motor Forward, Right Motor Backward."""
+        turn_speed = 100  # Use full power for turning to ensure adequate torque
+        LOGGER.info("Action: Pivot Turn Right (Left Wheels Forward %.1f%%, Right Wheels Back %.1f%%, PWM: %d Hz)", 
+                   turn_speed, turn_speed, self.pwm_frequency)
         
         # Left side (A) must push forward
         self.set_direction('A', 'forward')
