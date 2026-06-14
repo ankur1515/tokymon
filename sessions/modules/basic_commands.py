@@ -13,6 +13,7 @@ from control.safety import SafetyManager
 from display import expressions, max7219_driver
 from sessions.modules.base import BaseModule, ModuleResult
 from sensors.interface import get_ultrasonic_reader
+from sensors.drivers import hcsr04_back
 from system.config import CONFIG
 from system.logger import get_logger
 from vision import camera
@@ -33,6 +34,15 @@ def _update_ui_face(mode: str) -> None:
     with _ui_lock:
         _ui_state["face_mode"] = mode
         _ui_state["last_update"] = time.time()
+    # Also write to shared state file so the standalone always-on face server
+    # (separate process) picks up the change via SSE within ~50 ms.
+    # Wrapped in try/except — file write is non-critical; in-process dict
+    # update above is already done and cannot be undone by this failing.
+    try:
+        from sessions.modules.face_state import write as _write_face_state
+        _write_face_state(mode)
+    except Exception:
+        pass
 
 
 def _play_prompt(filename: str, safety: Optional[SafetyManager]) -> None:
@@ -323,19 +333,18 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         driver.backward(speed=100)  # Full speed (100%)
         if safety:
             safety.heartbeat()
-        # Continuous distance monitoring with ultrasonic brake
-        ultrasonic_reader = get_ultrasonic_reader()
+        # Continuous distance monitoring with back ultrasonic brake
         start_time = time.time()
         last_ultrasonic_time = 0
         distances_logged = []
         while time.time() - start_time < 3.0:  # 3 seconds duration
             if safety:
                 safety.heartbeat()
-            
+
             # Check distance (HC-SR04 needs ~60ms between readings)
             current_time = time.time()
             if current_time - last_ultrasonic_time >= 0.06:  # Minimum 60ms between readings
-                distance = ultrasonic_reader()
+                distance = hcsr04_back.read_distance_cm()
                 last_ultrasonic_time = current_time
                 if distance > 0:
                     distances_logged.append(distance)
@@ -346,7 +355,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
                     LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
                     driver.brake()
                     break
-            
+
             # Sleep in small chunks to allow frequent checks
             _safe_sleep(0.05, safety)  # Reduced to 50ms for more responsive checks
         else:
@@ -354,16 +363,16 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
             driver.brake()
         if safety:
             safety.heartbeat()
-        
+
         # Log final distance after command
-        final_distance = ultrasonic_reader()
+        final_distance = hcsr04_back.read_distance_cm()
         if final_distance > 0:
             LOGGER.info("Ultrasonic distance after backward: %.1f cm", final_distance)
         elif final_distance == -1:
             LOGGER.debug("Ultrasonic timeout after backward")
         if distances_logged:
             avg_distance = sum(distances_logged) / len(distances_logged)
-            LOGGER.info("Average ultrasonic distance during backward: %.1f cm (from %d readings)", 
+            LOGGER.info("Average ultrasonic distance during backward: %.1f cm (from %d readings)",
                        avg_distance, len(distances_logged))
         else:
             LOGGER.warning("No valid ultrasonic readings during backward command")

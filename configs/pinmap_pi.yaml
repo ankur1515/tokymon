@@ -16,6 +16,13 @@ ultrasonic_hcsr04:
   gnd: gnd
   echo_divider: { r1: 2000, r2: 1000 }
 
+ultrasonic_hcsr04_back:
+  trig: 16
+  echo: 19
+  vcc: 5v
+  gnd: gnd
+  echo_divider: { r1: 2000, r2: 1000 }
+
 ir_left:
   out: 17
   vcc: 3v3

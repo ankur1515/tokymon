@@ -1,0 +1,50 @@
+# tokymon-face.service — always-on Tokymon face server
+#
+# Install on Raspberry Pi:
+#   sudo cp configs/tokymon-face.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now tokymon-face
+#
+# This service starts at boot (after the network is up), runs the standalone
+# face HTTP server on port 8080, and restarts automatically if it crashes.
+# Chromium kiosk (in labwc autostart) connects to localhost:8080 and shows
+# the face on the touchscreen.  Session scripts change the face by writing to
+# /tmp/tokymon/face_state.json via sessions.modules.face_state.
+
+[Unit]
+Description=Tokymon always-on face display server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=ankursharma
+Group=ankursharma
+WorkingDirectory=/home/ankursharma/Projects/tokymon
+
+# Ensure state directory exists before starting
+ExecStartPre=/bin/mkdir -p /tmp/tokymon
+ExecStartPre=/bin/chmod 777 /tmp/tokymon
+
+ExecStart=/home/ankursharma/Projects/tokymon/venv/bin/python3 \
+    /home/ankursharma/Projects/tokymon/scripts/run_face_server.py
+
+# Restart on any exit (crash or clean stop) — face must always be available
+Restart=always
+RestartSec=3
+
+# Environment
+Environment=PYTHONPATH=/home/ankursharma/Projects/tokymon
+Environment=TOKY_ENV=prod
+Environment=TOKYMON_FACE_PORT=8080
+
+# Output goes to journald — view with: journalctl -u tokymon-face -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tokymon-face
+
+# Prevent the service consuming unbounded memory
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

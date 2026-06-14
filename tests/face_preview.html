@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Tokymon — Face Expressions Preview</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#111;font-family:monospace;padding:24px}
+h1{color:#5ce0f5;font-size:18px;text-align:center;letter-spacing:4px;text-transform:uppercase;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;max-width:1200px;margin:0 auto}
+.card{background:#000;border:1px solid #1a4a55;border-radius:10px;overflow:hidden}
+.label{color:#5ce0f5;font-size:11px;letter-spacing:3px;text-align:center;padding:8px 0 4px;text-transform:uppercase;opacity:0.8}
+svg{display:block;width:100%;height:auto}
+</style>
+</head>
+<body>
+<h1>Tokymon · Face Expressions</h1>
+<div class="grid">
+
+  <!-- 1. WAITING -->
+  <div class="card">
+    <div class="label">Waiting (Idle)</div>
+    <svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
+    <rect width="800" height="480" fill="#000"/>
+    <defs>
+      <filter id="n1" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2" result="a"/>
+        <feGaussianBlur stdDeviation="7" result="b"/>
+        <feGaussianBlur stdDeviation="18" result="c"/>
+        <feMerge><feMergeNode in="c"/><feMergeNode in="b"/><feMergeNode in="a"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#n1)" stroke="#5ce0f5" fill="none" stroke-linecap="round">
+      <!-- brows: relaxed -->
+      <path stroke-width="7" d="M 112 92 Q 195 76 278 88"/>
+      <path stroke-width="7" d="M 522 88 Q 605 76 688 92"/>
+      <!-- eye rings -->
+      <circle cx="195" cy="200" r="88" stroke-width="11"/>
+      <circle cx="605" cy="200" r="88" stroke-width="11"/>
+      <!-- pupils centre -->
+      <circle cx="216" cy="176" r="14" fill="#fff" stroke="none"/>
+      <circle cx="626" cy="176" r="14" fill="#fff" stroke="none"/>
+      <!-- mouth: tiny calm curve -->
+      <path d="M 344 396 Q 400 412 456 396" stroke-width="8"/>
+    </g>
+    </svg>
+  </div>
+
+  <!-- 2. NORMAL SMILE / GREETING -->
+  <div class="card">
+    <div class="label">Happy (Normal / Greeting)</div>
+    <svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
+    <rect width="800" height="480" fill="#000"/>
+    <defs>
+      <filter id="n2" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2" result="a"/>
+        <feGaussianBlur stdDeviation="7" result="b"/>
+        <feGaussianBlur stdDeviation="18" result="c"/>
+        <feMerge><feMergeNode in="c"/><feMergeNode in="b"/><feMergeNode in="a"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#n2)" stroke="#5ce0f5" fill="none" stroke-linecap="round">
+      <!-- brows: happy raised -->
+      <path stroke-width="7" d="M 108 82 Q 195 64 280 78"/>
+      <path stroke-width="7" d="M 520 78 Q 605 64 692 82"/>
+      <!-- eye rings -->
+      <circle cx="195" cy="200" r="88" stroke-width="11"/>
+      <circle cx="605" cy="200" r="88" stroke-width="11"/>
+      <!-- pupils up-centre -->
+      <circle cx="216" cy="176" r="14" fill="#fff" stroke="none"/>
+      <circle cx="626" cy="176" r="14" fill="#fff" stroke="none"/>
+      <!-- mouth: wide warm smile -->
+      <path d="M 272 385 Q 400 436 528 385" stroke-width="9"/>
+    </g>
+    </svg>
+  </div>
+
+  <!-- 3. SPEAKING -->
+  <div class="card">
+    <div class="label">Speaking (Open Mouth)</div>
+    <svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
+    <rect width="800" height="480" fill="#000"/>
+    <defs>
+      <filter id="n3" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2" result="a"/>
+        <feGaussianBlur stdDeviation="7" result="b"/>
+        <feGaussianBlur stdDeviation="18" result="c"/>
+        <feMerge><feMergeNode in="c"/><feMergeNode in="b"/><feMergeNode in="a"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#n3)" stroke="#5ce0f5" fill="none" stroke-linecap="round">
+      <!-- brows: happy (no blinking) -->
+      <path stroke-width="7" d="M 108 82 Q 195 64 280 78"/>
+      <path stroke-width="7" d="M 520 78 Q 605 64 692 82"/>
+      <!-- eye rings -->
+      <circle cx="195" cy="200" r="88" stroke-width="11"/>
+      <circle cx="605" cy="200" r="88" stroke-width="11"/>
+      <!-- pupils -->
+      <circle cx="216" cy="176" r="14" fill="#fff" stroke="none"/>
+      <circle cx="626" cy="176" r="14" fill="#fff" stroke="none"/>
+      <!-- mouth: speaking ellipse mid-open -->
+      <ellipse cx="400" cy="400" rx="56" ry="26" stroke-width="9"/>
+    </g>
+    </svg>
+  </div>
+
+  <!-- 4. MOVING / EXCITED -->
+  <div class="card">
+    <div class="label">Excited (Moving)</div>
+    <svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
+    <rect width="800" height="480" fill="#000"/>
+    <defs>
+      <filter id="n4" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2" result="a"/>
+        <feGaussianBlur stdDeviation="7" result="b"/>
+        <feGaussianBlur stdDeviation="18" result="c"/>
+        <feMerge><feMergeNode in="c"/><feMergeNode in="b"/><feMergeNode in="a"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#n4)" stroke="#5ce0f5" fill="none" stroke-linecap="round">
+      <!-- brows: very high excited -->
+      <path stroke-width="7" d="M 104 64 Q 195 42 284 60"/>
+      <path stroke-width="7" d="M 516 60 Q 605 42 696 64"/>
+      <!-- excited squint ^^ arcs (no rings) -->
+      <path d="M 107 200 Q 195 110 283 200" stroke-width="11"/>
+      <path d="M 517 200 Q 605 110 693 200" stroke-width="11"/>
+      <path d="M 126 192 Q 195 136 264 192" stroke-width="5" opacity="0.4"/>
+      <path d="M 536 192 Q 605 136 674 192" stroke-width="5" opacity="0.4"/>
+      <!-- mouth: very wide excited smile -->
+      <path d="M 248 380 Q 400 444 552 380" stroke-width="9"/>
+      <path d="M 270 382 Q 400 426 530 382" stroke-width="5" opacity="0.35"/>
+    </g>
+    </svg>
+  </div>
+
+  <!-- 5. STOP / THINKING -->
+  <div class="card">
+    <div class="label">Thinking (Stop)</div>
+    <svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
+    <rect width="800" height="480" fill="#000"/>
+    <defs>
+      <filter id="n5" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2" result="a"/>
+        <feGaussianBlur stdDeviation="7" result="b"/>
+        <feGaussianBlur stdDeviation="18" result="c"/>
+        <feMerge><feMergeNode in="c"/><feMergeNode in="b"/><feMergeNode in="a"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#n5)" stroke="#5ce0f5" fill="none" stroke-linecap="round">
+      <!-- brows: one raised (thinking asymmetry) -->
+      <path stroke-width="7" d="M 112 90 Q 195 76 278 86"/>
+      <path stroke-width="7" d="M 520 68 Q 605 46 692 68"/>
+      <!-- eye rings -->
+      <circle cx="195" cy="200" r="88" stroke-width="11"/>
+      <circle cx="605" cy="200" r="88" stroke-width="11"/>
+      <!-- pupils looking up -->
+      <circle cx="210" cy="158" r="14" fill="#fff" stroke="none"/>
+      <circle cx="620" cy="158" r="14" fill="#fff" stroke="none"/>
+      <!-- excited squint echo hint -->
+      <path d="M 107 200 Q 195 110 283 200" stroke-width="5" opacity="0.18"/>
+      <path d="M 517 200 Q 605 110 693 200" stroke-width="5" opacity="0.18"/>
+      <!-- mouth: small calm closed curve -->
+      <path d="M 348 394 Q 400 408 452 394" stroke-width="8"/>
+      <!-- thinking dots -->
+      <g fill="#5ce0f5" stroke="none">
+        <circle cx="362" cy="52" r="7" opacity="0.9"/>
+        <circle cx="400" cy="38" r="7" opacity="0.55"/>
+        <circle cx="438" cy="52" r="7" opacity="0.15"/>
+      </g>
+    </g>
+    </svg>
+  </div>
+
+  <!-- 6. SPEAKING wide-open for comparison -->
+  <div class="card">
+    <div class="label">Speaking (Mouth Wide)</div>
+    <svg viewBox="0 0 800 480" xmlns="http://www.w3.org/2000/svg">
+    <rect width="800" height="480" fill="#000"/>
+    <defs>
+      <filter id="n6" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="2" result="a"/>
+        <feGaussianBlur stdDeviation="7" result="b"/>
+        <feGaussianBlur stdDeviation="18" result="c"/>
+        <feMerge><feMergeNode in="c"/><feMergeNode in="b"/><feMergeNode in="a"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g filter="url(#n6)" stroke="#5ce0f5" fill="none" stroke-linecap="round">
+      <path stroke-width="7" d="M 108 82 Q 195 64 280 78"/>
+      <path stroke-width="7" d="M 520 78 Q 605 64 692 82"/>
+      <circle cx="195" cy="200" r="88" stroke-width="11"/>
+      <circle cx="605" cy="200" r="88" stroke-width="11"/>
+      <circle cx="216" cy="176" r="14" fill="#fff" stroke="none"/>
+      <circle cx="626" cy="176" r="14" fill="#fff" stroke="none"/>
+      <!-- mouth: speaking ellipse fully open -->
+      <ellipse cx="400" cy="400" rx="56" ry="42" stroke-width="9"/>
+    </g>
+    </svg>
+  </div>
+
+</div>
+</body>
+</html>
