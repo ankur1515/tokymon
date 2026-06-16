@@ -454,19 +454,19 @@ def _perform_360_rotation(safety: Optional[SafetyManager]) -> bool:
     _update_ui_face("moving")
     
     # Set direction for continuous left rotation at 100% speed
-    # At 100% speed with 20 kHz PWM, should complete 360 degrees in ~8-10 seconds
+    # Calibrated: 3.15 seconds = exactly 360 degrees at 100% speed on this chassis
     LOGGER.info("360 rotation: Setting motors to full power (100%%) for maximum torque")
     driver.set_direction('A', 'backward')
     driver.set_direction('B', 'forward')
     driver.set_motor_speed(100, 100)  # Full speed (100%) for adequate turning torque
-    
+
     if safety:
         safety.heartbeat()
-    
+
     # Rotate and check for face continuously
     start_time = time.time()
     last_face_check = 0
-    rotation_duration = 10.0  # Maximum rotation time for 360 degrees at 100% speed
+    rotation_duration = 3.15  # Calibrated: exactly one 360-degree rotation at 100% speed
     
     while time.time() - start_time < rotation_duration:
         if safety:
