@@ -467,12 +467,22 @@ def _perform_360_rotation(safety: Optional[SafetyManager]) -> bool:
     start_time = time.time()
     last_face_check = 0
     rotation_duration = 3.15  # Calibrated: exactly one 360-degree rotation at 100% speed
-    
-    while time.time() - start_time < rotation_duration:
+    motor_braked = False
+
+    while True:
         if safety:
             safety.heartbeat()
-        
-        # Check for face every 0.5 seconds during rotation
+
+        elapsed = time.time() - start_time
+
+        # Brake motor at exactly 3.15s — BEFORE face detection which can take ~3s
+        if not motor_braked and elapsed >= rotation_duration:
+            driver.brake()
+            motor_braked = True
+            LOGGER.info("360 rotation complete (%.2fs), motor braked", elapsed)
+            break
+
+        # Check for face every 0.5 seconds while still rotating
         current_time = time.time()
         if current_time - last_face_check >= 0.5:
             if _detect_face_binary("during_360_rotation", safety):
@@ -480,12 +490,11 @@ def _perform_360_rotation(safety: Optional[SafetyManager]) -> bool:
                 driver.brake()
                 _update_ui_face("normal_smile")
                 return True
-            last_face_check = current_time
-        
-        _safe_sleep(0.1, safety)
-    
-    # Complete rotation without finding face
-    driver.brake()
+            last_face_check = time.time()  # update after detection (detection takes time)
+
+        _safe_sleep(0.05, safety)
+
+    # Complete rotation without finding face — motor already braked above
     if safety:
         safety.heartbeat()
     
