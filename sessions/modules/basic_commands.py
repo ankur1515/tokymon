@@ -292,7 +292,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
                     LOGGER.info("Ultrasonic distance during forward: %.1f cm", distance)
                 elif distance == -1:
                     LOGGER.debug("Ultrasonic timeout during forward")
-                if distance > 0 and distance < 20:  # Valid reading and too close
+                if distance > 0 and distance < 20:  # Valid reading and too close — 20cm is safe for forward (slower approach)
                     LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
                     driver.brake()
                     break
@@ -351,7 +351,7 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
                     LOGGER.info("Ultrasonic distance during backward: %.1f cm", distance)
                 elif distance == -1:
                     LOGGER.debug("Ultrasonic timeout during backward")
-                if distance > 0 and distance < 20:  # Valid reading and too close
+                if distance > 0 and distance < 35:  # 35cm threshold — extra margin needed at full speed going backward
                     LOGGER.warning("Ultrasonic brake triggered: distance=%.1f cm", distance)
                     driver.brake()
                     break
