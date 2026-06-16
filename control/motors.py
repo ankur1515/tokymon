@@ -175,18 +175,20 @@ class MotorDriver:
 
     def forward(self, speed=90):
         """Drives all four wheels forward (Left and Right)."""
-        LOGGER.info("Action: Moving Forward (All 4 Wheels) at %.1f%% speed (PWM: %d Hz)", 
+        LOGGER.info("Action: Moving Forward (All 4 Wheels) at %.1f%% speed (PWM: %d Hz)",
                    speed, self.pwm_frequency)
-        self.set_direction('A', 'forward')
-        self.set_direction('B', 'forward')
+        # Direction swapped: chassis is physically mounted so 'backward' pins = forward motion
+        self.set_direction('A', 'backward')
+        self.set_direction('B', 'backward')
         self.set_motor_speed(speed, speed)
 
     def backward(self, speed=90):
         """Drives all four wheels backward (Left and Right)."""
-        LOGGER.info("Action: Moving Backward (All 4 Wheels) at %.1f%% speed (PWM: %d Hz)", 
+        LOGGER.info("Action: Moving Backward (All 4 Wheels) at %.1f%% speed (PWM: %d Hz)",
                    speed, self.pwm_frequency)
-        self.set_direction('A', 'backward')
-        self.set_direction('B', 'backward')
+        # Direction swapped: chassis is physically mounted so 'forward' pins = backward motion
+        self.set_direction('A', 'forward')
+        self.set_direction('B', 'forward')
         self.set_motor_speed(speed, speed)
 
     def brake(self):
@@ -203,28 +205,30 @@ class MotorDriver:
     def turn_left(self):
         """Pivot Turn Left: Left Motor Backward, Right Motor Forward."""
         turn_speed = 100  # Use full power for turning to ensure adequate torque
-        LOGGER.info("Action: Pivot Turn Left (Left Wheels Back %.1f%%, Right Wheels Forward %.1f%%, PWM: %d Hz)", 
+        LOGGER.info("Action: Pivot Turn Left (Left Wheels Back %.1f%%, Right Wheels Forward %.1f%%, PWM: %d Hz)",
                    turn_speed, turn_speed, self.pwm_frequency)
-        
-        # Left side (A) must pull backward
-        self.set_direction('A', 'backward')
-        
-        # Right side (B) must push forward
-        self.set_direction('B', 'forward')
-        self.set_motor_speed(turn_speed, turn_speed) 
+
+        # Chassis physically reversed: 'forward' pin = physical backward, 'backward' pin = physical forward
+        # Left side (A) must move physically backward → use 'forward' pin direction
+        self.set_direction('A', 'forward')
+
+        # Right side (B) must move physically forward → use 'backward' pin direction
+        self.set_direction('B', 'backward')
+        self.set_motor_speed(turn_speed, turn_speed)
 
     def turn_right(self):
         """Pivot Turn Right: Left Motor Forward, Right Motor Backward."""
         turn_speed = 100  # Use full power for turning to ensure adequate torque
-        LOGGER.info("Action: Pivot Turn Right (Left Wheels Forward %.1f%%, Right Wheels Back %.1f%%, PWM: %d Hz)", 
+        LOGGER.info("Action: Pivot Turn Right (Left Wheels Forward %.1f%%, Right Wheels Back %.1f%%, PWM: %d Hz)",
                    turn_speed, turn_speed, self.pwm_frequency)
-        
-        # Left side (A) must push forward
-        self.set_direction('A', 'forward')
-        
-        # Right side (B) must pull backward
-        self.set_direction('B', 'backward')
-        self.set_motor_speed(turn_speed, turn_speed) 
+
+        # Chassis physically reversed: 'forward' pin = physical backward, 'backward' pin = physical forward
+        # Left side (A) must move physically forward → use 'backward' pin direction
+        self.set_direction('A', 'backward')
+
+        # Right side (B) must move physically backward → use 'forward' pin direction
+        self.set_direction('B', 'forward')
+        self.set_motor_speed(turn_speed, turn_speed)
         
     def test_motor_a(self, speed=100):
         """Runs Motor A, testing both forward and backward directions for 2s each."""
