@@ -390,8 +390,9 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         if safety:
             safety.heartbeat()
         # Set direction for turn left, then override speed to 100%
-        driver.set_direction('A', 'backward')
-        driver.set_direction('B', 'forward')
+        # A='forward' + B='backward' = physical LEFT turn (chassis pins are reversed)
+        driver.set_direction('A', 'forward')
+        driver.set_direction('B', 'backward')
         driver.set_motor_speed(100, 100)  # Full speed (100%)
         if safety:
             safety.heartbeat()
@@ -413,8 +414,9 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
         if safety:
             safety.heartbeat()
         # Set direction for turn right, then override speed to 100%
-        driver.set_direction('A', 'forward')
-        driver.set_direction('B', 'backward')
+        # A='backward' + B='forward' = physical RIGHT turn (chassis pins are reversed)
+        driver.set_direction('A', 'backward')
+        driver.set_direction('B', 'forward')
         driver.set_motor_speed(100, 100)  # Full speed (100%)
         if safety:
             safety.heartbeat()

@@ -1,32 +1,79 @@
 # Face Detection Models
 
-## Haar Cascade Model
+## Phase 1 — YuNet Detector (pose-robust, replaces Haar Cascade)
 
-Place the Haar Cascade model file here:
+**File:** `face_detection_yunet_2023mar.onnx` (337 KB)
+
+Handles ±90° yaw, ±30° pitch. Returns 5-point landmarks per face.
+
+**Download (on Raspberry Pi):**
+```bash
+cd vision/models
+wget "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+```
+
+If network is blocked, use `python3 vision/model_manager.py download`.
+
+---
+
+## Phase 2 — MobileFaceNet Recognizer (128-d embeddings)
+
+**File:** `mobilefacenet.onnx` (~4 MB)
+
+Zero-shot identity enrolment. No retraining required to add new people.
+
+**Download (on Raspberry Pi):**
+```bash
+pip install insightface
+python3 -c "
+import insightface
+m = insightface.app.FaceAnalysis(name='buffalo_s')
+m.prepare(ctx_id=-1)
+"
+# Then copy the model:
+cp ~/.insightface/models/buffalo_s/w600k_mbf.onnx vision/models/mobilefacenet.onnx
+```
+
+**Alternative direct download:**
+```bash
+wget https://github.com/foamliu/MobileFaceNet/releases/download/v1.0/mobilefacenet.onnx \
+     -O vision/models/mobilefacenet.onnx
+```
+
+---
+
+## Verify All Models
+
+```bash
+python3 vision/model_manager.py status    # check what's present
+python3 vision/model_manager.py download  # auto-download missing
+python3 vision/model_manager.py verify    # load-test via ONNX Runtime
+```
+
+---
+
+## Fallback Behaviour
+
+| YuNet model | MobileFaceNet model | Behaviour |
+|---|---|---|
+| ✓ present | ✓ present | Full pipeline: detection + recognition + gallery |
+| ✗ missing | ✓ present | Falls back to Haar Cascade detection only |
+| ✓ present | ✗ missing | YuNet detection only; face_present() works, enrol/identify disabled |
+| ✗ missing | ✗ missing | Haar Cascade only; face_present() works (original behaviour) |
+
+The existing `face_present()` API always works regardless of which models are present.
+
+---
+
+## Legacy Haar Cascade
 
 **File:** `haarcascade_frontalface_default.xml`
 
-**Download from:**
-- OpenCV GitHub: https://github.com/opencv/opencv/blob/master/data/haarcascades/haarcascade_frontalface_default.xml
-- Or install OpenCV and copy from: `/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml`
-
-**Installation on Raspberry Pi:**
-
+Still used as automatic fallback when YuNet model is absent. Download:
 ```bash
-# Option 1: Download directly
-cd vision/models
-wget https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml
-
-# Option 2: Copy from system OpenCV (if installed)
-cp /usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml vision/models/
-
-# Option 3: Install OpenCV and use system path
+# Option 1: auto-detected from system OpenCV
 sudo apt-get install python3-opencv
-# Code will auto-detect from system path
+
+# Option 2: manual download
+wget https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml
 ```
-
-The face detector will automatically find the model from:
-1. `vision/models/haarcascade_frontalface_default.xml` (this directory)
-2. `/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml` (system)
-3. OpenCV data directory (if cv2.data available)
-
