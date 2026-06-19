@@ -158,9 +158,9 @@ def _detect_haar(detector: Any, frame: Any) -> List[Dict]:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
     faces = detector.detectMultiScale(
         gray,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(40, 40),
+        scaleFactor=1.05,   # was 1.1 — finer scale steps catch faces at more distances
+        minNeighbors=3,     # was 5 — less strict for eye-level camera at 1–2 m
+        minSize=(30, 30),   # was (40,40) — catch slightly smaller/more distant faces
         maxSize=(400, 400),
         flags=cv2.CASCADE_SCALE_IMAGE,
     )

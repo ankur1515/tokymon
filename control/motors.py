@@ -321,6 +321,18 @@ def stop():
     """Stop motors (brake then coast)."""
     _get_driver().brake()
 
+def reset_to_safe():
+    """Brake and coast all motors to a safe stopped state.
+
+    Safe to call at any time — on app startup, before each command,
+    or after any operation. Ensures pins are in a known state.
+    """
+    try:
+        _get_driver().brake()
+        LOGGER.info("Motors reset to safe state (brake + coast)")
+    except Exception as e:
+        LOGGER.warning("reset_to_safe: could not brake motors: %s", e)
+
 def cleanup():
     """Clean up GPIO and close handles."""
     global _driver

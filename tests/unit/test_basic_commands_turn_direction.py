@@ -150,5 +150,66 @@ class TestBasicCommandsTurnDirection(unittest.TestCase):
         self.assertTrue(driver.brake_called, "turn_right should call brake() after movement")
 
 
+class TestPerform360Rotation(unittest.TestCase):
+    """
+    Regression tests for _perform_360_rotation pin directions.
+    Must use A='forward', B='backward' (physical LEFT turn, same as turn_left).
+    """
+
+    def _run_360(self) -> FakeDriver:
+        fake_driver = FakeDriver()
+
+        with (
+            patch("sessions.modules.basic_commands._update_ui_face"),
+            patch("sessions.modules.basic_commands._detect_face_binary", return_value=False),
+            patch("sessions.modules.basic_commands._safe_sleep"),
+            patch("sessions.modules.basic_commands.motors._get_driver",
+                  return_value=fake_driver),
+            patch("sessions.modules.basic_commands.motors.reset_to_safe"),
+            # Patch time.time so the rotation loop exits immediately
+            patch("sessions.modules.basic_commands.time") as mock_time,
+        ):
+            # First call: start_time=0.0; second+ calls: elapsed > rotation_duration (3.15s)
+            mock_time.time.side_effect = [0.0] + [10.0] * 50
+            from sessions.modules.basic_commands import _perform_360_rotation
+            _perform_360_rotation(safety=None)
+
+        return fake_driver
+
+    def test_360_motor_A_is_forward(self):
+        """360° rotation must set Motor A to 'forward' (physical left turn)."""
+        driver = self._run_360()
+        self.assertEqual(driver.directions.get('A'), 'forward',
+                         "360 rotation: Motor A should be 'forward'")
+
+    def test_360_motor_B_is_backward(self):
+        """360° rotation must set Motor B to 'backward' (physical left turn)."""
+        driver = self._run_360()
+        self.assertEqual(driver.directions.get('B'), 'backward',
+                         "360 rotation: Motor B should be 'backward'")
+
+    def test_360_matches_turn_left_direction(self):
+        """360° rotation pin assignments must match turn_left (both turn physically left)."""
+        driver_360 = self._run_360()
+
+        fake_driver = FakeDriver()
+        with (
+            patch("sessions.modules.basic_commands._play_prompt"),
+            patch("sessions.modules.basic_commands._update_ui_face"),
+            patch("sessions.modules.basic_commands._show_face_led"),
+            patch("sessions.modules.basic_commands._safe_sleep"),
+            patch("sessions.modules.basic_commands.motors._get_driver",
+                  return_value=fake_driver),
+            patch("sessions.modules.basic_commands.motors.reset_to_safe"),
+        ):
+            from sessions.modules.basic_commands import _perform_safe_command
+            _perform_safe_command("turn_left", safety=None)
+
+        self.assertEqual(driver_360.directions.get('A'), fake_driver.directions.get('A'),
+                         "360 rotation Motor A must match turn_left Motor A")
+        self.assertEqual(driver_360.directions.get('B'), fake_driver.directions.get('B'),
+                         "360 rotation Motor B must match turn_left Motor B")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

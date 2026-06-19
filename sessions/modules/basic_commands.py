@@ -21,19 +21,12 @@ from vision import face_detector
 
 LOGGER = get_logger("basic_commands")
 
-# Global state for iPhone UI (simple in-memory state)
-_ui_state = {
-    "face_mode": "normal_smile",  # normal_smile, greeting, moving, stop, speaking
-    "last_update": time.time(),
-}
 _ui_lock = threading.Lock()
 
 
 def _update_ui_face(mode: str) -> None:
-    """Update iPhone UI face state."""
-    with _ui_lock:
-        _ui_state["face_mode"] = mode
-        _ui_state["last_update"] = time.time()
+    """Update UI face state."""
+    pass
     # Also write to shared state file so the standalone always-on face server
     # (separate process) picks up the change via SSE within ~50 ms.
     # Wrapped in try/except — file write is non-critical; in-process dict
@@ -250,7 +243,10 @@ def _perform_safe_command(command: str, safety: Optional[SafetyManager]) -> None
     Commands: greeting, forward, backward, turn_left, turn_right, stop
     """
     LOGGER.info("Command demonstrated: %s", command)
-    
+
+    # Ensure motors are in a safe stopped state before every command
+    motors.reset_to_safe()
+
     # Get singleton motor driver
     driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
     
@@ -457,9 +453,10 @@ def _perform_360_rotation(safety: Optional[SafetyManager]) -> bool:
     
     # Set direction for continuous left rotation at 100% speed
     # Calibrated: 3.15 seconds = exactly 360 degrees at 100% speed on this chassis
+    # A='forward' + B='backward' = physical LEFT turn (chassis pins are reversed)
     LOGGER.info("360 rotation: Setting motors to full power (100%%) for maximum torque")
-    driver.set_direction('A', 'backward')
-    driver.set_direction('B', 'forward')
+    driver.set_direction('A', 'forward')
+    driver.set_direction('B', 'backward')
     driver.set_motor_speed(100, 100)  # Full speed (100%) for adequate turning torque
 
     if safety:
@@ -525,15 +522,10 @@ class BasicCommandsModule(BaseModule):
         """Initialize basic commands and robot interaction."""
         self.logger.info("Module start: basic_commands")
         self.reposition_attempted = False
-        
-        # Start iPhone UI server first
-        try:
-            from sessions.modules.ui_server import start_ui_server
-            start_ui_server(port=8080)
-            self.logger.info("iPhone UI server started on port 8080")
-        except Exception as exc:
-            self.logger.warning("Failed to start UI server: %s", exc)
-        
+
+        # Free all motor pins from any previous session before doing anything
+        motors.reset_to_safe()
+
         # Safety manager should be set by orchestrator before enter() is called
         # If not set, create a fallback (shouldn't happen in normal flow)
         if self.safety is None:
@@ -563,13 +555,12 @@ class BasicCommandsModule(BaseModule):
         # Step 2: Play session intro prompt (second prompt)
         _play_prompt("bc_02_session_intro.wav", self.safety)
         
-        # Step 3: Select 2 other commands (excluding greeting)
-        available_commands = ["forward", "backward", "turn_left", "turn_right", "stop"]
-        selected_commands = random.sample(available_commands, min(2, len(available_commands)))
-        
-        self.logger.info("Demonstrating additional commands: %s", selected_commands)
-        
-        # Step 4: Demonstrate the 2 other commands
+        # Step 3: Run all movement commands in fixed order (excluding greeting)
+        selected_commands = ["forward", "backward", "turn_left", "turn_right", "stop"]
+
+        self.logger.info("Demonstrating all commands: %s", selected_commands)
+
+        # Step 4: Demonstrate all commands
         for i, cmd in enumerate(selected_commands):
             if self._stop_requested:
                 break
@@ -631,18 +622,12 @@ class BasicCommandsModule(BaseModule):
         
         # Play goodbye prompt
         _play_prompt("bc_15_session_goodbye.wav", self.safety)
-        
-        try:
-            driver = motors._get_driver() if hasattr(motors, '_get_driver') else motors.MotorDriver()
-            driver.brake()
-        except Exception:
-            pass
+
+        # Final safe state + full GPIO release so next session starts clean
+        motors.reset_to_safe()
+        motors.cleanup()
+        hcsr04_back.cleanup()
+
         if self.safety:
             self.safety.stop()
         
-        # Stop iPhone UI server
-        try:
-            from sessions.modules.ui_server import stop_ui_server
-            stop_ui_server()
-        except Exception:
-            pass

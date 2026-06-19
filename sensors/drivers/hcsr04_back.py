@@ -106,3 +106,30 @@ def read_distance_cm(timeout_s: float = 0.05) -> float:
 
     LOGGER.debug("hcsr04_back: %.2f cm", dist)
     return round(dist, 2)
+
+
+def cleanup() -> None:
+    """Release gpiozero GPIO pins (BCM TRIG/ECHO).
+
+    Must be called on app exit so the next session can claim the pins
+    without hitting 'GPIO busy'. After cleanup, read_distance_cm falls
+    back to sim mode for the remainder of this process run.
+    """
+    global _trig, _echo, USE_SIM
+    if _trig is not None:
+        try:
+            _trig.close()
+        except Exception:
+            pass
+        _trig = None
+    if _echo is not None:
+        try:
+            _echo.close()
+        except Exception:
+            pass
+        _echo = None
+    USE_SIM = True
+    LOGGER.info(
+        "hcsr04_back: GPIO pins released (BCM%d, BCM%d)",
+        BCM_TRIG, BCM_ECHO,
+    )
